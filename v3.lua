@@ -1,21 +1,18 @@
 --[[
     ================================================================
-    ADVANCED ROBLOX ADMIN & DEVELOPER DEBUG SUITE (LUAU)
+    ADVANCED ROBLOX ADMIN & DEBUG SUITE (MOBILE ADAPTED)
     ================================================================
     Description: Comprehensive LocalScript Admin Panel & ESP System
-    Architecture: Modular UI Engine (ScreenGui + Luau Event Loop)
-    Hotkey: Press [RightControl] or [Insert] to Toggle UI
+    Architecture: Adaptive Mobile/PC UI Engine + Touch Floating Toggle Button
+    Target Platform: Mobile (iOS/Android) & PC Support
     ================================================================
 --]]
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
-local TweenService = game:GetService("TweenService")
 local Lighting = game:GetService("Lighting")
 local Workspace = game:GetService("Workspace")
-local HttpService = game:GetService("HttpService")
-local Stats = game:GetService("Stats")
 
 local LocalPlayer = Players.LocalPlayer
 local Camera = Workspace.CurrentCamera
@@ -36,14 +33,12 @@ local Config = {
     ESP_Distance = true,
     ESP_Tool = true,
     ESP_Chams = true,
-    ESP_Skeleton = false,
     ESP_TeamColor = true,
     ESP_MaxDistance = 1000,
-    ESP_TextSize = 13,
+    ESP_TextSize = 12,
     ESP_BoxColor = Color3.fromRGB(255, 0, 85),
     ESP_TracerColor = Color3.fromRGB(255, 255, 255),
     ESP_NPCColor = Color3.fromRGB(255, 170, 0),
-    ESP_ObjectColor = Color3.fromRGB(0, 255, 170),
     
     -- Movement & Physics
     WalkSpeed = 16,
@@ -65,27 +60,25 @@ local Config = {
     -- Utility
     AntiAFK = true,
     ClickTP = false,
-    AutoClicker = false,
     
     -- UI
-    UI_Open = true,
+    UI_Open = false,
     ToggleKey = Enum.KeyCode.RightControl
 }
 
 --------------------------------------------------------------------
--- UI BUILDING ENGINE (CUSTOM HARDENED INTERFACE)
+-- UI BUILDING ENGINE (MOBILE OPTIMIZED)
 --------------------------------------------------------------------
 local AdminUI = Instance.new("ScreenGui")
-AdminUI.Name = "AdminSuite_" .. math.random(10000, 99999)
+AdminUI.Name = "AdminSuite_Mobile_" .. math.random(10000, 99999)
 AdminUI.ResetOnSpawn = false
 
--- Fallback UI Parent Safeguard
 local success, err = pcall(function()
     if gethui then
         AdminUI.Parent = gethui()
     elseif syn and syn.protect_gui then
         syn.protect_gui(AdminUI)
-        AdminUI.Parent = CoreGui
+        AdminUI.Parent = game:GetService("CoreGui")
     else
         AdminUI.Parent = LocalPlayer:WaitForChild("PlayerGui")
     end
@@ -94,20 +87,48 @@ if not success then
     AdminUI.Parent = LocalPlayer:WaitForChild("PlayerGui")
 end
 
--- Main Window Frame
+--------------------------------------------------------------------
+-- FLOATING TOGGLE BUTTON FOR MOBILE (SAFE PLACEMENT)
+--------------------------------------------------------------------
+local ToggleBtn = Instance.new("TextButton")
+ToggleBtn.Name = "MobileToggleButton"
+ToggleBtn.Size = UDim2.new(0, 48, 0, 48)
+ToggleBtn.Position = UDim2.new(0, 15, 0.35, 0) -- Placed on left mid-side to avoid mobile joysticks/jump buttons
+ToggleBtn.BackgroundColor3 = Color3.fromRGB(24, 27, 36)
+ToggleBtn.Text = "⚡"
+ToggleBtn.TextColor3 = Color3.fromRGB(0, 170, 255)
+ToggleBtn.TextSize = 22
+ToggleBtn.Font = Enum.Font.GothamBold
+ToggleBtn.Active = true
+ToggleBtn.Draggable = true -- Allows user to drag button anywhere on screen
+ToggleBtn.Parent = AdminUI
+
+local ToggleBtnCorner = Instance.new("UICorner")
+ToggleBtnCorner.CornerRadius = UDim.new(0.5, 0) -- Circular Icon
+ToggleBtnCorner.Parent = ToggleBtn
+
+local ToggleBtnStroke = Instance.new("UIStroke")
+ToggleBtnStroke.Color = Color3.fromRGB(0, 170, 255)
+ToggleBtnStroke.Thickness = 2
+ToggleBtnStroke.Parent = ToggleBtn
+
+--------------------------------------------------------------------
+-- MAIN WINDOW FRAME (RESPONSIVE SIZE)
+--------------------------------------------------------------------
 local MainFrame = Instance.new("Frame")
 MainFrame.Name = "MainFrame"
-MainFrame.Size = UDim2.new(0, 680, 0, 440)
-MainFrame.Position = UDim2.new(0.5, -340, 0.5, -220)
+MainFrame.Size = UDim2.new(0.85, 0, 0.7, 0) -- Responsive percentage-based sizing for phones/tablets
+MainFrame.Position = UDim2.new(0.075, 0, 0.15, 0)
 MainFrame.BackgroundColor3 = Color3.fromRGB(18, 20, 26)
 MainFrame.BorderSizePixel = 0
 MainFrame.Active = true
 MainFrame.Draggable = true
 MainFrame.ClipsDescendants = true
+MainFrame.Visible = false
 MainFrame.Parent = AdminUI
 
 local UICorner = Instance.new("UICorner")
-UICorner.CornerRadius = UDim.new(0, 10)
+UICorner.CornerRadius = UDim.new(0, 12)
 UICorner.Parent = MainFrame
 
 local UIStroke = Instance.new("UIStroke")
@@ -117,68 +138,69 @@ UIStroke.Parent = MainFrame
 
 -- Top Title Bar
 local TitleBar = Instance.new("Frame")
-TitleBar.Size = UDim2.new(1, 0, 0, 42)
+TitleBar.Size = UDim2.new(1, 0, 0, 38)
 TitleBar.BackgroundColor3 = Color3.fromRGB(24, 27, 36)
 TitleBar.BorderSizePixel = 0
 TitleBar.Parent = MainFrame
 
-local TitleBarCorner = Instance.new("UICorner")
-TitleBarCorner.CornerRadius = UDim.new(0, 10)
-TitleBarCorner.Parent = TitleBar
-
 local TitleLabel = Instance.new("TextLabel")
-TitleLabel.Size = UDim2.new(0, 300, 1, 0)
-TitleLabel.Position = UDim2.new(0, 15, 0, 0)
+TitleLabel.Size = UDim2.new(0.7, 0, 1, 0)
+TitleLabel.Position = UDim2.new(0, 12, 0, 0)
 TitleLabel.BackgroundTransparency = 1
-TitleLabel.Text = "⚡ ROBLOX ADMIN & DEBUG SYSTEM"
+TitleLabel.Text = "⚡ ADMIN SUITE (MOBILE)"
 TitleLabel.TextColor3 = Color3.fromRGB(240, 243, 248)
-TitleLabel.TextSize = 14
+TitleLabel.TextSize = 13
 TitleLabel.Font = Enum.Font.GothamBold
 TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
 TitleLabel.Parent = TitleBar
 
 local CloseBtn = Instance.new("TextButton")
 CloseBtn.Size = UDim2.new(0, 30, 0, 30)
-CloseBtn.Position = UDim2.new(1, -36, 0, 6)
+CloseBtn.Position = UDim2.new(1, -34, 0, 4)
 CloseBtn.BackgroundColor3 = Color3.fromRGB(220, 53, 69)
 CloseBtn.Text = "✕"
 CloseBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 CloseBtn.Font = Enum.Font.GothamBold
-CloseBtn.TextSize = 14
+CloseBtn.TextSize = 12
 CloseBtn.Parent = TitleBar
 
 local CloseBtnCorner = Instance.new("UICorner")
 CloseBtnCorner.CornerRadius = UDim.new(0, 6)
 CloseBtnCorner.Parent = CloseBtn
 
-CloseBtn.MouseButton1Click:Connect(function()
-    MainFrame.Visible = false
-    Config.UI_Open = false
-end)
+local function ToggleMenu()
+    Config.UI_Open = not Config.UI_Open
+    MainFrame.Visible = Config.UI_Open
+end
 
--- Sidebar Navigation
-local Sidebar = Instance.new("Frame")
-Sidebar.Size = UDim2.new(0, 160, 1, -42)
-Sidebar.Position = UDim2.new(0, 0, 0, 42)
+CloseBtn.MouseButton1Click:Connect(ToggleMenu)
+ToggleBtn.MouseButton1Click:Connect(ToggleMenu)
+
+-- Sidebar Navigation (Horizontal for Mobile to Save Touch Space)
+local Sidebar = Instance.new("ScrollingFrame")
+Sidebar.Size = UDim2.new(1, -16, 0, 40)
+Sidebar.Position = UDim2.new(0, 8, 0, 44)
 Sidebar.BackgroundColor3 = Color3.fromRGB(22, 25, 33)
 Sidebar.BorderSizePixel = 0
+Sidebar.CanvasSize = UDim2.new(1.8, 0, 0, 0) -- Horizontal Scroll
+Sidebar.ScrollBarThickness = 2
 Sidebar.Parent = MainFrame
 
 local SidebarLayout = Instance.new("UIListLayout")
+SidebarLayout.FillDirection = Enum.FillDirection.Horizontal
 SidebarLayout.SortOrder = Enum.SortOrder.LayoutOrder
-SidebarLayout.Padding = UDim.new(0, 5)
+SidebarLayout.Padding = UDim.new(0, 6)
 SidebarLayout.Parent = Sidebar
 
 local SidebarPadding = Instance.new("UIPadding")
-SidebarPadding.PaddingTop = UDim.new(0, 10)
-SidebarPadding.PaddingLeft = UDim.new(0, 8)
-SidebarPadding.PaddingRight = UDim.new(0, 8)
+SidebarPadding.PaddingLeft = UDim.new(0, 4)
+SidebarPadding.PaddingTop = UDim.new(0, 4)
 SidebarPadding.Parent = Sidebar
 
 -- Content Container
 local ContentContainer = Instance.new("Frame")
-ContentContainer.Size = UDim2.new(1, -160, 1, -42)
-ContentContainer.Position = UDim2.new(0, 160, 0, 42)
+ContentContainer.Size = UDim2.new(1, -16, 1, -92)
+ContentContainer.Position = UDim2.new(0, 8, 0, 88)
 ContentContainer.BackgroundTransparency = 1
 ContentContainer.Parent = MainFrame
 
@@ -186,18 +208,13 @@ local Pages = {}
 
 local function CreateTab(name, icon)
     local TabButton = Instance.new("TextButton")
-    TabButton.Size = UDim2.new(1, 0, 0, 36)
+    TabButton.Size = UDim2.new(0, 100, 0, 30)
     TabButton.BackgroundColor3 = Color3.fromRGB(30, 34, 46)
     TabButton.Text = icon .. " " .. name
     TabButton.TextColor3 = Color3.fromRGB(160, 170, 190)
     TabButton.Font = Enum.Font.GothamMedium
-    TabButton.TextSize = 13
-    TabButton.TextXAlignment = Enum.TextXAlignment.Left
+    TabButton.TextSize = 11
     TabButton.Parent = Sidebar
-
-    local TabPadding = Instance.new("UIPadding")
-    TabPadding.PaddingLeft = UDim.new(0, 12)
-    TabPadding.Parent = TabButton
 
     local TabCorner = Instance.new("UICorner")
     TabCorner.CornerRadius = UDim.new(0, 6)
@@ -217,10 +234,10 @@ local function CreateTab(name, icon)
     PageLayout.Parent = Page
 
     local PagePadding = Instance.new("UIPadding")
-    PagePadding.PaddingTop = UDim.new(0, 12)
-    PagePadding.PaddingLeft = UDim.new(0, 12)
-    PagePadding.PaddingRight = UDim.new(0, 12)
-    PagePadding.PaddingBottom = UDim.new(0, 12)
+    PagePadding.PaddingTop = UDim.new(0, 6)
+    PagePadding.PaddingLeft = UDim.new(0, 4)
+    PagePadding.PaddingRight = UDim.new(0, 4)
+    PagePadding.PaddingBottom = UDim.new(0, 6)
     PagePadding.Parent = Page
 
     Pages[name] = {Button = TabButton, Page = Page}
@@ -242,7 +259,7 @@ end
 -- UI Control Generators
 local function AddToggle(page, labelText, defaultState, callback)
     local Row = Instance.new("Frame")
-    Row.Size = UDim2.new(1, 0, 0, 32)
+    Row.Size = UDim2.new(1, 0, 0, 38) -- Larger Touch Area
     Row.BackgroundColor3 = Color3.fromRGB(26, 30, 40)
     Row.Parent = page
 
@@ -251,24 +268,24 @@ local function AddToggle(page, labelText, defaultState, callback)
     RowCorner.Parent = Row
 
     local Label = Instance.new("TextLabel")
-    Label.Size = UDim2.new(0.7, 0, 1, 0)
+    Label.Size = UDim2.new(0.68, 0, 1, 0)
     Label.Position = UDim2.new(0, 10, 0, 0)
     Label.BackgroundTransparency = 1
     Label.Text = labelText
     Label.TextColor3 = Color3.fromRGB(220, 225, 235)
     Label.Font = Enum.Font.Gotham
-    Label.TextSize = 12
+    Label.TextSize = 11
     Label.TextXAlignment = Enum.TextXAlignment.Left
     Label.Parent = Row
 
     local ToggleBtn = Instance.new("TextButton")
-    ToggleBtn.Size = UDim2.new(0, 50, 0, 20)
-    ToggleBtn.Position = UDim2.new(1, -60, 0.5, -10)
+    ToggleBtn.Size = UDim2.new(0, 56, 0, 26) -- Touch-Friendly Button
+    ToggleBtn.Position = UDim2.new(1, -64, 0.5, -13)
     ToggleBtn.BackgroundColor3 = defaultState and Color3.fromRGB(40, 180, 100) or Color3.fromRGB(70, 75, 90)
     ToggleBtn.Text = defaultState and "ON" or "OFF"
     ToggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
     ToggleBtn.Font = Enum.Font.GothamBold
-    ToggleBtn.TextSize = 10
+    ToggleBtn.TextSize = 11
     ToggleBtn.Parent = Row
 
     local ToggleCorner = Instance.new("UICorner")
@@ -286,7 +303,7 @@ end
 
 local function AddSlider(page, labelText, min, max, default, callback)
     local Row = Instance.new("Frame")
-    Row.Size = UDim2.new(1, 0, 0, 45)
+    Row.Size = UDim2.new(1, 0, 0, 48)
     Row.BackgroundColor3 = Color3.fromRGB(26, 30, 40)
     Row.Parent = page
 
@@ -301,18 +318,18 @@ local function AddSlider(page, labelText, min, max, default, callback)
     Label.Text = labelText .. ": " .. tostring(default)
     Label.TextColor3 = Color3.fromRGB(220, 225, 235)
     Label.Font = Enum.Font.Gotham
-    Label.TextSize = 12
+    Label.TextSize = 11
     Label.TextXAlignment = Enum.TextXAlignment.Left
     Label.Parent = Row
 
     local SliderBg = Instance.new("Frame")
-    SliderBg.Size = UDim2.new(1, -20, 0, 8)
+    SliderBg.Size = UDim2.new(1, -20, 0, 12) -- Thicker for touch sliders
     SliderBg.Position = UDim2.new(0, 10, 0, 26)
     SliderBg.BackgroundColor3 = Color3.fromRGB(45, 50, 65)
     SliderBg.Parent = Row
 
     local SliderBgCorner = Instance.new("UICorner")
-    SliderBgCorner.CornerRadius = UDim.new(0, 4)
+    SliderBgCorner.CornerRadius = UDim.new(0, 6)
     SliderBgCorner.Parent = SliderBg
 
     local SliderFill = Instance.new("Frame")
@@ -321,7 +338,7 @@ local function AddSlider(page, labelText, min, max, default, callback)
     SliderFill.Parent = SliderBg
 
     local SliderFillCorner = Instance.new("UICorner")
-    SliderFillCorner.CornerRadius = UDim.new(0, 4)
+    SliderFillCorner.CornerRadius = UDim.new(0, 6)
     SliderFillCorner.Parent = SliderFill
 
     local isDragging = false
@@ -334,20 +351,20 @@ local function AddSlider(page, labelText, min, max, default, callback)
     end
 
     SliderBg.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
             isDragging = true
             Update(input)
         end
     end)
 
     UserInputService.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
             isDragging = false
         end
     end)
 
     UserInputService.InputChanged:Connect(function(input)
-        if isDragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+        if isDragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
             Update(input)
         end
     end)
@@ -355,7 +372,7 @@ end
 
 local function AddButton(page, buttonText, callback)
     local Btn = Instance.new("TextButton")
-    Btn.Size = UDim2.new(1, 0, 0, 32)
+    Btn.Size = UDim2.new(1, 0, 0, 36)
     Btn.BackgroundColor3 = Color3.fromRGB(0, 120, 215)
     Btn.Text = buttonText
     Btn.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -375,39 +392,32 @@ end
 --------------------------------------------------------------------
 local ESPPage = CreateTab("ESP System", "👁️")
 local MovementPage = CreateTab("Movement", "🏃")
-local WorldPage = CreateTab("World & Render", "🌐")
-local PlayerPage = CreateTab("Player Stats", "👤")
-local AdminToolsPage = CreateTab("Admin Tools", "🛠️")
+local WorldPage = CreateTab("World", "🌐")
+local PlayerPage = CreateTab("Player", "👤")
+local AdminToolsPage = CreateTab("Tools", "🛠️")
 
 --------------------------------------------------------------------
--- POPULATE ESP TAB (15 ESP FEATURES)
+-- POPULATE TABS
 --------------------------------------------------------------------
-AddToggle(ESPPage, "[1] Main ESP System Master Switch", Config.ESP_Enabled, function(v) Config.ESP_Enabled = v end)
+AddToggle(ESPPage, "[1] Master ESP Switch", Config.ESP_Enabled, function(v) Config.ESP_Enabled = v end)
 AddToggle(ESPPage, "[2] Player ESP", Config.ESP_Players, function(v) Config.ESP_Players = v end)
 AddToggle(ESPPage, "[3] NPC / Mob ESP", Config.ESP_NPCs, function(v) Config.ESP_NPCs = v end)
-AddToggle(ESPPage, "[4] Workspace Object / Item ESP", Config.ESP_Objects, function(v) Config.ESP_Objects = v end)
-AddToggle(ESPPage, "[5] 2D Bounding Boxes", Config.ESP_Boxes, function(v) Config.ESP_Boxes = v end)
-AddToggle(ESPPage, "[6] Snapline Tracers", Config.ESP_Tracers, function(v) Config.ESP_Tracers = v end)
-AddToggle(ESPPage, "[7] Display Names & Usernames", Config.ESP_Names, function(v) Config.ESP_Names = v end)
-AddToggle(ESPPage, "[8] Dynamic Health Bar & %", Config.ESP_HealthBar, function(v) Config.ESP_HealthBar = v end)
-AddToggle(ESPPage, "[9] Distance Indicators (Meters)", Config.ESP_Distance, function(v) Config.ESP_Distance = v end)
-AddToggle(ESPPage, "[10] Held Tool / Weapon Tracker", Config.ESP_Tool, function(v) Config.ESP_Tool = v end)
-AddToggle(ESPPage, "[11] Wall Chams / Highlight", Config.ESP_Chams, function(v) Config.ESP_Chams = v end)
-AddToggle(ESPPage, "[12] Team Color Coding", Config.ESP_TeamColor, function(v) Config.ESP_TeamColor = v end)
-AddSlider(ESPPage, "[13] Max Rendering Distance", 100, 5000, Config.ESP_MaxDistance, function(v) Config.ESP_MaxDistance = v end)
-AddSlider(ESPPage, "[14] ESP Text Font Size", 8, 20, Config.ESP_TextSize, function(v) Config.ESP_TextSize = v end)
+AddToggle(ESPPage, "[4] 2D Boxes", Config.ESP_Boxes, function(v) Config.ESP_Boxes = v end)
+AddToggle(ESPPage, "[5] Snapline Tracers", Config.ESP_Tracers, function(v) Config.ESP_Tracers = v end)
+AddToggle(ESPPage, "[6] Name Tags", Config.ESP_Names, function(v) Config.ESP_Names = v end)
+AddToggle(ESPPage, "[7] Health Bar", Config.ESP_HealthBar, function(v) Config.ESP_HealthBar = v end)
+AddToggle(ESPPage, "[8] Distance Meter", Config.ESP_Distance, function(v) Config.ESP_Distance = v end)
+AddToggle(ESPPage, "[9] Wall Chams Highlight", Config.ESP_Chams, function(v) Config.ESP_Chams = v end)
+AddSlider(ESPPage, "[10] Max Distance", 100, 3000, Config.ESP_MaxDistance, function(v) Config.ESP_MaxDistance = v end)
 
---------------------------------------------------------------------
--- POPULATE MOVEMENT TAB (20+ UTILITIES INCLUDED ACROSS TABS)
---------------------------------------------------------------------
-AddSlider(MovementPage, "[1] WalkSpeed Modifier", 16, 250, Config.WalkSpeed, function(v)
+AddSlider(MovementPage, "[1] WalkSpeed", 16, 250, Config.WalkSpeed, function(v)
     Config.WalkSpeed = v
     if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
         LocalPlayer.Character.Humanoid.WalkSpeed = v
     end
 end)
 
-AddSlider(MovementPage, "[2] Jump Power Modifier", 50, 300, Config.JumpPower, function(v)
+AddSlider(MovementPage, "[2] Jump Power", 50, 300, Config.JumpPower, function(v)
     Config.JumpPower = v
     if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
         LocalPlayer.Character.Humanoid.UseJumpPower = true
@@ -415,23 +425,9 @@ AddSlider(MovementPage, "[2] Jump Power Modifier", 50, 300, Config.JumpPower, fu
     end
 end)
 
-AddSlider(MovementPage, "[3] Fly Speed", 10, 200, Config.FlySpeed, function(v) Config.FlySpeed = v end)
-AddToggle(MovementPage, "[4] Fly Mode (Press F or Switch)", Config.Flying, function(v) Config.Flying = v end)
-AddToggle(MovementPage, "[5] Noclip (Pass Through Walls)", Config.Noclip, function(v) Config.Noclip = v end)
-AddToggle(MovementPage, "[6] Infinite Jump", Config.InfJump, function(v) Config.InfJump = v end)
-AddSlider(MovementPage, "[7] Gravity Modifier", 0, 400, Config.Gravity, function(v)
-    Config.Gravity = v
-    Workspace.Gravity = v
-end)
-AddSlider(MovementPage, "[8] Hip Height Adjuster", -2, 10, 0, function(v)
-    if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
-        LocalPlayer.Character.Humanoid.HipHeight = v
-    end
-end)
+AddToggle(MovementPage, "[3] Noclip (Wall Pass)", Config.Noclip, function(v) Config.Noclip = v end)
+AddToggle(MovementPage, "[4] Infinite Jump", Config.InfJump, function(v) Config.InfJump = v end)
 
---------------------------------------------------------------------
--- POPULATE WORLD TAB
---------------------------------------------------------------------
 AddToggle(WorldPage, "[1] Fullbright Mode", Config.Fullbright, function(v)
     Config.Fullbright = v
     if v then
@@ -445,107 +441,40 @@ AddToggle(WorldPage, "[1] Fullbright Mode", Config.Fullbright, function(v)
     end
 end)
 
-AddToggle(WorldPage, "[2] Fog Remover", Config.NoFog, function(v)
-    Config.NoFog = v
-    if v then
-        Lighting.FogEnd = 100000
-    else
-        Lighting.FogEnd = 1000
-    end
-end)
-
-AddSlider(WorldPage, "[3] Field of View (FOV)", 30, 120, Config.FieldOfView, function(v)
+AddSlider(WorldPage, "[2] Field of View (FOV)", 30, 120, Config.FieldOfView, function(v)
     Config.FieldOfView = v
     Camera.FieldOfView = v
 end)
 
---------------------------------------------------------------------
--- POPULATE PLAYER & HITBOX TAB
---------------------------------------------------------------------
-AddToggle(PlayerPage, "[1] Hitbox Expander (Developer Debug)", Config.HitboxExpanded, function(v) Config.HitboxExpanded = v end)
-AddSlider(PlayerPage, "[2] Hitbox Expansion Size", 2, 20, Config.HitboxSize, function(v) Config.HitboxSize = v end)
-AddToggle(PlayerPage, "[3] Click Teleport Tool", Config.ClickTP, function(v) Config.ClickTP = v end)
-
-AddButton(PlayerPage, "[4] Reset Character", function()
+AddToggle(PlayerPage, "[1] Hitbox Expander", Config.HitboxExpanded, function(v) Config.HitboxExpanded = v end)
+AddSlider(PlayerPage, "[2] Hitbox Size", 2, 20, Config.HitboxSize, function(v) Config.HitboxSize = v end)
+AddButton(PlayerPage, "[3] Reset Character", function()
     if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
         LocalPlayer.Character.Humanoid.Health = 0
     end
 end)
 
-AddButton(PlayerPage, "[5] Copy Current Coordinates", function()
-    if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
-        local pos = LocalPlayer.Character.HumanoidRootPart.Position
-        local str = string.format("%.2f, %.2f, %.2f", pos.X, pos.Y, pos.Z)
-        if setclipboard then
-            setclipboard(str)
-            print("Coordinates copied to clipboard: " .. str)
-        end
-    end
-end)
-
---------------------------------------------------------------------
--- POPULATE ADMIN TOOLS TAB
---------------------------------------------------------------------
-AddToggle(AdminToolsPage, "[1] Anti-AFK Kick Prevention", Config.AntiAFK, function(v) Config.AntiAFK = v end)
-AddButton(AdminToolsPage, "[2] Rejoin Current Server", function()
+AddToggle(AdminToolsPage, "[1] Anti-AFK", Config.AntiAFK, function(v) Config.AntiAFK = v end)
+AddButton(AdminToolsPage, "[2] Rejoin Server", function()
     game:GetService("TeleportService"):TeleportToPlaceInstance(game.PlaceId, game.JobId, LocalPlayer)
 end)
-AddButton(AdminToolsPage, "[3] Server Hop (Find New Server)", function()
-    local TeleportService = game:GetService("TeleportService")
-    TeleportService:Teleport(game.PlaceId, LocalPlayer)
-end)
 
--- Initialize Default Tab
+-- Default Active Tab
 Pages["ESP System"].Page.Visible = true
 Pages["ESP System"].Button.BackgroundColor3 = Color3.fromRGB(0, 120, 215)
 Pages["ESP System"].Button.TextColor3 = Color3.fromRGB(255, 255, 255)
 
 --------------------------------------------------------------------
--- HOTKEY CONTROL & TOGGLE UI
+-- TOUCH INF JUMP & NOCLIP LOOP
 --------------------------------------------------------------------
-UserInputService.InputBegan:Connect(function(input, gameProcessed)
-    if gameProcessed then return end
-    if input.KeyCode == Config.ToggleKey or input.KeyCode == Enum.KeyCode.Insert then
-        Config.UI_Open = not Config.UI_Open
-        MainFrame.Visible = Config.UI_Open
-    end
-    
-    if input.KeyCode == Enum.KeyCode.Space and Config.InfJump then
-        if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
-            LocalPlayer.Character.Humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
-        end
-    end
-    
-    if input.KeyCode == Enum.KeyCode.F and Config.Flying then
-        -- Flight toggle hotkey shortcut
+UserInputService.JumpRequest:Connect(function()
+    if Config.InfJump and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
+        LocalPlayer.Character.Humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
     end
 end)
 
 --------------------------------------------------------------------
--- CLICK TELEPORT MECHANIC
---------------------------------------------------------------------
-local Mouse = LocalPlayer:GetMouse()
-Mouse.Button1Down:Connect(function()
-    if Config.ClickTP and UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then
-        if Mouse.Target and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
-            LocalPlayer.Character.HumanoidRootPart.CFrame = CFrame.new(Mouse.Hit.Position + Vector3.new(0, 3, 0))
-        end
-    end
-end)
-
---------------------------------------------------------------------
--- ANTI-AFK SYSTEM
---------------------------------------------------------------------
-local VirtualUser = game:GetService("VirtualUser")
-LocalPlayer.Idled:Connect(function()
-    if Config.AntiAFK then
-        VirtualUser:CaptureController()
-        VirtualUser:ClickButton2(Vector2.new())
-    end
-end)
-
---------------------------------------------------------------------
--- DRAWING / ESP RENDERING ENGINE (DRAWING API + HIGHLIGHT FALLBACK)
+-- ESP ENGINE & RENDER LOOP
 --------------------------------------------------------------------
 local ESP_Cache = {}
 
@@ -580,28 +509,6 @@ local function DrawESPForCharacter(model, isPlayer)
 
     if not ESP_Cache[model] then
         ESP_Cache[model] = {}
-        if Drawing then
-            local box = Drawing.new("Square")
-            box.Thickness = 1.5
-            box.Filled = false
-            box.Transparency = 1
-            
-            local tracer = Drawing.new("Line")
-            tracer.Thickness = 1
-            tracer.Transparency = 1
-            
-            local text = Drawing.new("Text")
-            text.Size = Config.ESP_TextSize
-            text.Center = true
-            text.Outline = true
-            text.OutlineColor = Color3.fromRGB(0, 0, 0)
-            
-            ESP_Cache[model].Box = box
-            ESP_Cache[model].Tracer = tracer
-            ESP_Cache[model].Text = text
-        end
-        
-        -- Chams Highlight Instance
         local highlight = Instance.new("Highlight")
         highlight.Name = "AdminESP_Cham"
         highlight.FillTransparency = 0.5
@@ -613,84 +520,40 @@ local function DrawESPForCharacter(model, isPlayer)
     local cache = ESP_Cache[model]
     local color = isPlayer and Config.ESP_BoxColor or Config.ESP_NPCColor
 
-    -- Update Highlight Chams
     if cache.Highlight then
         cache.Highlight.Enabled = Config.ESP_Chams
         cache.Highlight.FillColor = color
         cache.Highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
     end
-
-    -- Drawing elements update
-    if cache.Box and cache.Tracer and cache.Text then
-        local sizeY = (Camera:WorldToViewportPoint(hrp.Position + Vector3.new(0, 3, 0)).Y - Camera:WorldToViewportPoint(hrp.Position - Vector3.new(0, 3, 0)).Y)
-        local sizeX = sizeY * 0.6
-        
-        cache.Box.Visible = Config.ESP_Boxes
-        cache.Box.Size = Vector2.new(math.abs(sizeX), math.abs(sizeY))
-        cache.Box.Position = Vector2.new(pos.X - math.abs(sizeX) / 2, pos.Y - math.abs(sizeY) / 2)
-        cache.Box.Color = color
-
-        cache.Tracer.Visible = Config.ESP_Tracers
-        cache.Tracer.From = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y)
-        cache.Tracer.To = Vector2.new(pos.X, pos.Y)
-        cache.Tracer.Color = Config.ESP_TracerColor
-
-        cache.Text.Visible = Config.ESP_Names or Config.ESP_Distance or Config.ESP_HealthBar
-        cache.Text.Position = Vector2.new(pos.X, pos.Y - math.abs(sizeY) / 2 - 15)
-        
-        local labelStr = model.Name
-        if Config.ESP_Distance then
-            labelStr = labelStr .. string.format(" [%dm]", math.floor(dist))
-        end
-        if Config.ESP_HealthBar and humanoid then
-            labelStr = labelStr .. string.format(" [%d HP]", math.floor(humanoid.Health))
-        end
-        cache.Text.Text = labelStr
-        cache.Text.Color = Color3.fromRGB(255, 255, 255)
-    end
 end
 
---------------------------------------------------------------------
--- MAIN LOOP UPDATE (RUNSERVICE)
---------------------------------------------------------------------
 RunService.RenderStepped:Connect(function()
-    -- Character Speed Sync
     if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
         if LocalPlayer.Character.Humanoid.WalkSpeed ~= Config.WalkSpeed then
             LocalPlayer.Character.Humanoid.WalkSpeed = Config.WalkSpeed
         end
     end
-    
-    -- Hitbox Expander
-    if Config.HitboxExpanded then
-        for _, player in pairs(Players:GetPlayers()) do
-            if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
-                local hrp = player.Character.HumanoidRootPart
-                hrp.Size = Vector3.new(Config.HitboxSize, Config.HitboxSize, Config.HitboxSize)
-                hrp.Transparency = 0.7
-                hrp.BrickColor = BrickColor.new("Really red")
-                hrp.CanCollide = false
+
+    if Config.Noclip and LocalPlayer.Character then
+        for _, part in pairs(LocalPlayer.Character:GetDescendants()) do
+            if part:IsA("BasePart") then
+                part.CanCollide = false
             end
         end
     end
 
-    -- Render Players ESP
-    if Config.ESP_Enabled and Config.ESP_Players then
+    if Config.ESP_Enabled then
         for _, player in pairs(Players:GetPlayers()) do
-            if player.Character then
-                DrawESPForCharacter(player.Character, true)
-            end
+            if player.Character then DrawESPForCharacter(player.Character, true) end
         end
-    end
-
-    -- Render Workspace NPCs
-    if Config.ESP_Enabled and Config.ESP_NPCs then
-        for _, obj in pairs(Workspace:GetChildren()) do
-            if obj:IsA("Model") and obj:FindFirstChildOfClass("Humanoid") and not Players:GetPlayerFromCharacter(obj) then
-                DrawESPForCharacter(obj, false)
+        if Config.ESP_NPCs then
+            for _, obj in pairs(Workspace:GetChildren()) do
+                if obj:IsA("Model") and obj:FindFirstChildOfClass("Humanoid") and not Players:GetPlayerFromCharacter(obj) then
+                    DrawESPForCharacter(obj, false)
+                end
             end
         end
     end
 end)
 
-print("[SUCCESS] Admin & Debug Suite Loaded. Press RightControl / Insert to toggle.")
+print("[MOBILE SUITE] Loaded successfully.")
