@@ -10,6 +10,7 @@ local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
 local TweenInfo = TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+local Lighting = game:GetService("Lighting")
 
 -- // Variables
 local player = Players.LocalPlayer
@@ -305,6 +306,24 @@ local function createToggle(parent, name, label, key)
         config[key] = not config[key]
         toggle.BackgroundColor3 = config[key] and Color3.fromRGB(30, 200, 30) or Color3.fromRGB(80, 80, 80)
         toggle.Text = config[key] and "✓" or ""
+        
+        -- Update powers when toggled
+        if key == "speedEnabled" then toggleSpeed() end
+        if key == "flyEnabled" then toggleFly() end
+        if key == "noclipEnabled" then toggleNoclip() end
+        if key == "jumpBoostEnabled" then toggleJumpBoost() end
+        if key == "infiniteJumpEnabled" then toggleInfiniteJump() end
+        if key == "fullbrightEnabled" then toggleFullbright() end
+        if key == "removeFogEnabled" then toggleRemoveFog() end
+        if key == "timeSkipEnabled" then toggleTimeSkip() end
+        if key == "gravityControlEnabled" then toggleGravity() end
+        if key == "aimbotEnabled" then toggleAimbot() end
+        if key == "hitboxExtendEnabled" then toggleHitboxExtend() end
+        if key == "noRecoilEnabled" then toggleNoRecoil() end
+        if key == "antiAfkEnabled" then toggleAntiAfk() end
+        if key == "chatSpyEnabled" then toggleChatSpy() end
+        if key == "autoClickEnabled" then toggleAutoClick() end
+        if key == "teleportToolEnabled" then toggleTeleportTool() end
     end)
     
     return toggle
@@ -371,6 +390,16 @@ local function createSlider(parent, name, label, key, min, max, default)
             config[key] = value
             fill.Size = UDim2.new(percent, 0, 1, 0)
             labelText.Text = label .. ": " .. tostring(value)
+            
+            -- Update powers when slider changed
+            if key == "speedValue" and config.speedEnabled then toggleSpeed() end
+            if key == "flySpeed" and config.flyEnabled then toggleFly() end
+            if key == "jumpBoostValue" and config.jumpBoostEnabled then toggleJumpBoost() end
+            if key == "timeValue" and config.timeSkipEnabled then toggleTimeSkip() end
+            if key == "gravityValue" and config.gravityControlEnabled then toggleGravity() end
+            if key == "aimbotFOV" then end -- Updated in loop
+            if key == "aimbotSmoothness" then end -- Updated in loop
+            if key == "hitboxSize" and config.hitboxExtendEnabled then toggleHitboxExtend() end
         end
     end)
     
@@ -442,7 +471,7 @@ local function isNPC(model)
 end
 
 local function isItem(obj)
-    return obj:IsA("Tool") or obj:IsA("Part") and (obj.Name:lower():find("item") or obj.Name:lower():find("weapon"))
+    return obj:IsA("Tool") or (obj:IsA("Part") and (obj.Name:lower():find("item") or obj.Name:lower():find("weapon")))
 end
 
 local function isCorpse(model)
@@ -498,7 +527,7 @@ end
 
 local function createESP(playerObj)
     local character = playerObj.Character or playerObj.CharacterAdded:Wait()
-    local rootPart = character:WaitForChild("HumanoidRootPart", 5)
+    local rootPart = character:FindFirstChild("HumanoidRootPart")
     if not rootPart then return end
     
     local espFolder = Instance.new("Folder")
@@ -533,7 +562,7 @@ local function createESP(playerObj)
         nameLabel.Size = UDim2.new(1, 0, 0.4, 0)
         nameLabel.Position = UDim2.new(0, 0, 0, 0)
         nameLabel.BackgroundTransparency = 1
-        nameLabel.Text = playerObj.Name
+        nameLabel.Text = playerObj.Name or "Unknown"
         nameLabel.Font = Enum.Font.SourceSansBold
         nameLabel.TextSize = 14
         nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -546,7 +575,8 @@ local function createESP(playerObj)
         healthLabel.Size = UDim2.new(1, 0, 0.3, 0)
         healthLabel.Position = UDim2.new(0, 0, 0.4, 0)
         healthLabel.BackgroundTransparency = 1
-        healthLabel.Text = "Health: " .. tostring(rootPart:FindFirstAncestorOfClass("Model"):FindFirstChildOfClass("Humanoid").Health or 0)
+        local humanoid = character:FindFirstChildOfClass("Humanoid")
+        healthLabel.Text = humanoid and ("Health: " .. math.floor(humanoid.Health)) or "Health: N/A"
         healthLabel.Font = Enum.Font.SourceSans
         healthLabel.TextSize = 12
         healthLabel.TextColor3 = Color3.fromRGB(0, 255, 0)
@@ -559,7 +589,7 @@ local function createESP(playerObj)
         distanceLabel.Size = UDim2.new(1, 0, 0.3, 0)
         distanceLabel.Position = UDim2.new(0, 0, 0.7, 0)
         distanceLabel.BackgroundTransparency = 1
-        distanceLabel.Text = "Distance: " .. tostring(math.floor((rootPart.Position - camera.CFrame.Position).Magnitude)) .. "m"
+        distanceLabel.Text = "Distance: " .. math.floor((rootPart.Position - camera.CFrame.Position).Magnitude) .. "m"
         distanceLabel.Font = Enum.Font.SourceSans
         distanceLabel.TextSize = 12
         distanceLabel.TextColor3 = Color3.fromRGB(255, 255, 0)
@@ -621,11 +651,8 @@ local function updateESP()
     for _, playerObj in ipairs(Players:GetPlayers()) do
         if playerObj ~= player then
             if config.espPlayers then
-                if not playerObj.Character or not playerObj.Character:FindFirstChild("ESP") then
-                    if playerObj.Character then
-                        removeESP(playerObj.Character)
-                    end
-                    if playerObj.Character then
+                if playerObj.Character then
+                    if not playerObj.Character:FindFirstChild("ESP") then
                         createESP(playerObj)
                     end
                 end
@@ -665,7 +692,7 @@ local function updateESP()
                     
                     local billboard = Instance.new("BillboardGui")
                     billboard.Size = UDim2.new(0, 100, 0, 20)
-                    billboard.Adornee = obj:IsA("Tool") and obj.Handle or obj
+                    billboard.Adornee = obj:IsA("Tool") and (obj:FindFirstChild("Handle") or obj) or obj
                     billboard.AlwaysOnTop = true
                     billboard.StudsOffset = Vector3.new(0, 1, 0)
                     billboard.Parent = obj
@@ -888,18 +915,10 @@ local jumpConn
 local infiniteJumpConn
 
 local function toggleSpeed()
-    if config.speedEnabled then
-        local char = player.Character or player.CharacterAdded:Wait()
-        local humanoid = char:FindFirstChildOfClass("Humanoid")
-        if humanoid then
-            humanoid.WalkSpeed = config.speedValue
-        end
-    else
-        local char = player.Character or player.CharacterAdded:Wait()
-        local humanoid = char:FindFirstChildOfClass("Humanoid")
-        if humanoid then
-            humanoid.WalkSpeed = 16
-        end
+    local char = player.Character or player.CharacterAdded:Wait()
+    local humanoid = char:FindFirstChildOfClass("Humanoid")
+    if humanoid then
+        humanoid.WalkSpeed = config.speedEnabled and config.speedValue or 16
     end
 end
 
@@ -921,7 +940,7 @@ local function toggleFly()
                 end
                 local moveDir = Vector3.new(0, 0, 0)
                 if uis:IsKeyDown(Enum.KeyCode.W) then moveDir = moveDir + camera.CFrame.LookVector end
-                if uis:IsKeyDown(Enum.KeyCode.S) then moveDir = moveDir - camera.CFrame.FaceVector end
+                if uis:IsKeyDown(Enum.KeyCode.S) then moveDir = moveDir - camera.CFrame.LookVector end
                 if uis:IsKeyDown(Enum.KeyCode.A) then moveDir = moveDir - camera.CFrame.RightVector end
                 if uis:IsKeyDown(Enum.KeyCode.D) then moveDir = moveDir + camera.CFrame.RightVector end
                 if uis:IsKeyDown(Enum.KeyCode.Space) then moveDir = moveDir + Vector3.new(0, 1, 0) end
@@ -931,11 +950,13 @@ local function toggleFly()
             end)
         end
     else
-        local char = player.Character or player.CharacterAdded:Wait()
-        local rootPart = char:FindFirstChild("HumanoidRootPart")
-        if rootPart then
-            local flyVel = rootPart:FindFirstChild("FlyVelocity")
-            if flyVel then flyVel:Destroy() end
+        local char = player.Character
+        if char then
+            local rootPart = char:FindFirstChild("HumanoidRootPart")
+            if rootPart then
+                local flyVel = rootPart:FindFirstChild("FlyVelocity")
+                if flyVel then flyVel:Destroy() end
+            end
         end
     end
 end
@@ -969,18 +990,10 @@ local function toggleNoclip()
 end
 
 local function toggleJumpBoost()
-    if config.jumpBoostEnabled then
-        local char = player.Character or player.CharacterAdded:Wait()
-        local humanoid = char:FindFirstChildOfClass("Humanoid")
-        if humanoid then
-            humanoid.JumpPower = config.jumpBoostValue
-        end
-    else
-        local char = player.Character or player.CharacterAdded:Wait()
-        local humanoid = char:FindFirstChildOfClass("Humanoid")
-        if humanoid then
-            humanoid.JumpPower = 50
-        end
+    local char = player.Character or player.CharacterAdded:Wait()
+    local humanoid = char:FindFirstChildOfClass("Humanoid")
+    if humanoid then
+        humanoid.JumpPower = config.jumpBoostEnabled and config.jumpBoostValue or 50
     end
 end
 
@@ -1009,41 +1022,35 @@ local originalFog, originalTime, originalGravity
 
 local function toggleFullbright()
     if config.fullbrightEnabled then
-        local lighting = game:GetService("Lighting")
-        originalFog = lighting.FogEnd
-        lighting.FogEnd = 100000
+        originalFog = Lighting.FogEnd
+        Lighting.FogEnd = 100000
     else
-        local lighting = game:GetService("Lighting")
         if originalFog then
-            lighting.FogEnd = originalFog
+            Lighting.FogEnd = originalFog
         end
     end
 end
 
 local function toggleRemoveFog()
     if config.removeFogEnabled then
-        local lighting = game:GetService("Lighting")
-        lighting.FogEnd = 100000
-        lighting.FogStart = 0
-        lighting.ambient = Color3.fromRGB(255, 255, 255)
+        originalFog = Lighting.FogEnd
+        Lighting.FogEnd = 100000
+        Lighting.FogStart = 0
+        Lighting.ambient = Color3.fromRGB(255, 255, 255)
     else
-        local lighting = game:GetService("Lighting")
         if originalFog then
-            lighting.FogEnd = originalFog
+            Lighting.FogEnd = originalFog
         end
-    end
     end
 end
 
 local function toggleTimeSkip()
     if config.timeSkipEnabled then
-        local lighting = game:GetService("Lighting")
-        originalTime = lighting.TimeOfDay
-        lighting.TimeOfDay = tostring(config.timeValue) .. ":00:00"
+        originalTime = Lighting.TimeOfDay
+        Lighting.TimeOfDay = tostring(config.timeValue) .. ":00:00"
     else
-        local lighting = game:GetService("Lighting")
         if originalTime then
-            lighting.TimeOfDay = originalTime
+            Lighting.TimeOfDay = originalTime
         end
     end
 end
@@ -1141,10 +1148,8 @@ local function toggleHitboxExtend()
 end
 
 local function toggleNoRecoil()
-    if config.noRecoilEnabled then
-        -- No recoil implementation would require hooking into weapon scripts
-        -- This is a placeholder - actual implementation depends on game
-    end
+    -- No recoil implementation would require hooking into weapon scripts
+    -- This is a placeholder - actual implementation depends on game
 end
 
 -- // Utility Powers
@@ -1170,11 +1175,18 @@ end
 
 local function toggleChatSpy()
     if config.chatSpyEnabled then
-        chatSpyConn = game:GetService("ReplicatedStorage").DefaultChatSystemChatEvents.OnMessageDoneFiltering.OnClientEvent:Connect(function(messageData)
-            if messageData.Message then
-                print("[CHAT SPY] " .. (messageData.FromSpeaker or "Unknown") .. ": " .. messageData.Message)
+        local replicatedStorage = game:GetService("ReplicatedStorage")
+        local chatEvents = replicatedStorage:FindFirstChild("DefaultChatSystemChatEvents")
+        if chatEvents then
+            local onMessage = chatEvents:FindFirstChild("OnMessageDoneFiltering")
+            if onMessage then
+                chatSpyConn = onMessage.OnClientEvent:Connect(function(messageData)
+                    if messageData.Message then
+                        print("[CHAT SPY] " .. (messageData.FromSpeaker or "Unknown") .. ": " .. messageData.Message)
+                    end
+                end)
             end
-        end)
+        end
     else
         if chatSpyConn then
             chatSpyConn:Disconnect()
@@ -1217,33 +1229,6 @@ local function toggleTeleportTool()
     else
         local tool = player.Backpack:FindFirstChild("TeleportTool")
         if tool then tool:Destroy() end
-    end
-end
-
--- // Config Change Handlers
-local function updateAllPowers()
-    toggleSpeed()
-    toggleFly()
-    toggleNoclip()
-    toggleJumpBoost()
-    toggleInfiniteJump()
-    toggleFullbright()
-    toggleRemoveFog()
-    toggleTimeSkip()
-    toggleGravity()
-    toggleAimbot()
-    toggleHitboxExtend()
-    toggleNoRecoil()
-    toggleAntiAfk()
-    toggleChatSpy()
-    toggleAutoClick()
-    toggleTeleportTool()
-end
-
--- // Connect Config Changes
-for key, value in pairs(config) do
-    if typeof(value) == "boolean" then
-        -- Will be handled by toggle buttons
     end
 end
 
@@ -1312,9 +1297,10 @@ end)
 -- // Character Added Handler
 player.CharacterAdded:Connect(function()
     wait(1)
-    updateAllPowers()
+    toggleSpeed()
+    toggleJumpBoost()
+    toggleNoclip()
 end)
 
 -- // Initialize
-updateAllPowers()
 print("Admin GUI carregado com sucesso!")
