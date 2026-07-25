@@ -1,54 +1,45 @@
---!strict
---[=[
+--[[
 	UNICLUDE MOBILE QA TOOLKIT
-	Arquivo Ãºnico, sem loadstring, sem RemoteSpy e sem hooks de executor.
+	Arquivo Ãºnico para colar DENTRO de um LocalScript.
 
-	Uso recomendado: LocalScript em StarterPlayerScripts, apenas no seu jogo.
-	Por seguranÃ§a, as ferramentas de movimentaÃ§Ã£o sÃ³ funcionam no Studio ou
-	para UserIds explicitamente autorizados em AUTHORIZED_USER_IDS.
+	Onde colocar:
+	1. Roblox Studio > StarterPlayer > StarterPlayerScripts
+	2. Insert Object > LocalScript
+	3. Apague o conteÃºdo padrÃ£o e cole este arquivo
 
-	Ferramentas incluÃ­das:
-	1. Player ESP              11. Speed QA
-	2. Names                   12. Jump QA
-	3. Distance                13. Noclip QA
-	4. Tracers                 14. Fly QA
-	5. Boxes                   15. Click Teleport QA
-	6. Health Bars             16. Waypoint
-	7. Team Colors             17. Freecam QA
-	8. Highlight               18. FOV
-	9. Fullbright              19. Performance HUD
-	10. X-Ray                  20. Collision Viewer
-	21. Region Marker          22. Reset QA
-
-	Mobile: todos os controles tÃªm alvo mÃ­nimo de toque e a janela pode ser
-	arrastada pelo cabeÃ§alho. NÃ£o cobre a tela inteira durante o jogo.
-]=]
+	TambÃ©m funciona em StarterGui. NÃ£o use Script normal.
+	Ferramentas de movimento sÃ£o apenas QA do seu jogo: Studio ou UserId autorizado.
+	NÃ£o usa loadstring, executor, hook, RemoteSpy ou bypass.
+]]
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
-local UIS = game:GetService("UserInputService")
-local CAS = game:GetService("ContextActionService")
+local UserInputService = game:GetService("UserInputService")
 local Lighting = game:GetService("Lighting")
 local StarterGui = game:GetService("StarterGui")
-local TweenService = game:GetService("TweenService")
-local LocalPlayer = Players.LocalPlayer
 
+local player = Players.LocalPlayer
+if not player then
+	warn("[UNICLUDE QA] LocalPlayer nÃ£o encontrado. Este arquivo precisa ser um LocalScript.")
+	return
+end
+
+-- Adicione UserIds da sua equipe de QA aqui.
 local AUTHORIZED_USER_IDS = {
-	-- coloque aqui os UserIds da sua equipe de QA
 	-- [123456789] = true,
 }
 
-local IS_AUTHORIZED = RunService:IsStudio() or AUTHORIZED_USER_IDS[LocalPlayer.UserId] == true
-if not IS_AUTHORIZED then
-	warn("[UNICLUDE QA] toolkit desativado: jogador nÃ£o autorizado")
+local authorized = RunService:IsStudio() or AUTHORIZED_USER_IDS[player.UserId] == true
+if not authorized then
+	warn("[UNICLUDE QA] desativado para este jogador")
 	return
 end
 
 local COLORS = {
 	bg = Color3.fromRGB(18, 20, 18),
 	panel = Color3.fromRGB(27, 30, 26),
-	panel2 = Color3.fromRGB(35, 39, 32),
-	stroke = Color3.fromRGB(65, 72, 58),
+	panel2 = Color3.fromRGB(37, 41, 34),
+	stroke = Color3.fromRGB(72, 80, 63),
 	text = Color3.fromRGB(235, 239, 225),
 	muted = Color3.fromRGB(160, 168, 146),
 	accent = Color3.fromRGB(197, 232, 93),
@@ -58,413 +49,444 @@ local COLORS = {
 }
 
 local State = {
-	ESP = false, Names = true, Distance = true, Tracers = false, Boxes = true,
-	Health = true, Teams = true, Highlight = false, Fullbright = false,
-	XRay = false, Speed = false, Jump = false, Noclip = false, Fly = false,
-	ClickTP = false, Waypoint = false, Freecam = false, FOV = false,
-	Perf = false, Collision = false, Region = false,
-	SpeedValue = 24, JumpValue = 60, FOVValue = 80,
+	ESP = false,
+	Names = true,
+	Distance = true,
+	Highlight = false,
+	Fullbright = false,
+	XRay = false,
+	Speed = false,
+	Jump = false,
+	Noclip = false,
+	Fly = false,
+	ClickTP = false,
+	Waypoint = false,
+	Freecam = false,
+	FOV = false,
+	Performance = false,
+	Collision = false,
+	SpeedValue = 24,
+	JumpValue = 60,
+	FOVValue = 80,
 }
 
+local gui
+local shell
+local espData = {}
 local connections = {}
-local espObjects = {}
 local originalLighting = {}
-local originalParts = {}
-local waypointPart: Part? = nil
-local regionPart: Part? = nil
-local flyVelocity: BodyVelocity? = nil
-local freecamConnection: RBXScriptConnection? = nil
-local noclipConnection: RBXScriptConnection? = nil
-local perfConnection: RBXScriptConnection? = nil
-local characterConnection: RBXScriptConnection? = nil
-local panelOpen = true
+local originalTransparency = {}
+local noclipConnection
+local flyVelocity
+local freecamConnection
+local performanceConnection
+local waypoint
+local regionMarker
+local panelVisible = true
+local destroyed = false
 
-local function connect(signal, fn)
-	local c = signal:Connect(fn)
-	table.insert(connections, c)
-	return c
+local function connect(signal, callback)
+	local connection = signal:Connect(callback)
+	table.insert(connections, connection)
+	return connection
 end
 
-local function disconnect(c)
-	if c then c:Disconnect() end
+local function character()
+	return player.Character
 end
 
-local function getCharacter()
-	return LocalPlayer.Character
+local function root()
+	local model = character()
+	return model and model:FindFirstChild("HumanoidRootPart")
 end
 
-local function getRoot(character)
-	return character and character:FindFirstChild("HumanoidRootPart")
-end
-
-local function getHumanoid(character)
-	return character and character:FindFirstChildOfClass("Humanoid")
+local function humanoid()
+	local model = character()
+	return model and model:FindFirstChildOfClass("Humanoid")
 end
 
 local function notify(text)
 	pcall(function()
-		StarterGui:SetCore("SendNotification", { Title = "UNICLUDE QA", Text = text, Duration = 2 })
+		StarterGui:SetCore("SendNotification", {
+			Title = "UNICLUDE QA",
+			Text = text,
+			Duration = 2,
+		})
 	end)
+end
+
+local function addCorner(object, radius)
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, radius or 6)
+	corner.Parent = object
+	return corner
+end
+
+local function addStroke(object, color)
+	local stroke = Instance.new("UIStroke")
+	stroke.Color = color or COLORS.stroke
+	stroke.Transparency = 0.45
+	stroke.Parent = object
+	return stroke
 end
 
 -- UI -------------------------------------------------------------------------
-local gui = Instance.new("ScreenGui")
-gui.Name = "UNICLUDE_MobileQA"
-gui.ResetOnSpawn = false
-gui.IgnoreGuiInset = true
-gui.DisplayOrder = 100
+local function createGui()
+	local existing = player:WaitForChild("PlayerGui"):FindFirstChild("UNICLUDE_MobileQA")
+	if existing then existing:Destroy() end
 
-gui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+	gui = Instance.new("ScreenGui")
+	gui.Name = "UNICLUDE_MobileQA"
+	gui.ResetOnSpawn = false
+	gui.IgnoreGuiInset = true
+	gui.DisplayOrder = 100
+	gui.Parent = player.PlayerGui
 
-local shell = Instance.new("Frame")
-shell.Name = "Shell"
-shell.Size = UDim2.fromOffset(285, 430)
-shell.Position = UDim2.fromOffset(16, 90)
-shell.BackgroundColor3 = COLORS.bg
-shell.BorderSizePixel = 0
-shell.ClipsDescendants = true
-shell.Parent = gui
+	shell = Instance.new("Frame")
+	shell.Name = "Panel"
+	shell.Size = UDim2.fromOffset(292, 470)
+	shell.Position = UDim2.fromOffset(14, 84)
+	shell.BackgroundColor3 = COLORS.bg
+	shell.BorderSizePixel = 0
+	shell.ClipsDescendants = true
+	shell.Parent = gui
+	addCorner(shell, 10)
+	addStroke(shell, COLORS.stroke)
 
-local shellCorner = Instance.new("UICorner")
-shellCorner.CornerRadius = UDim.new(0, 10)
-shellCorner.Parent = shell
+	local header = Instance.new("Frame")
+	header.Name = "Header"
+	header.Size = UDim2.new(1, 0, 0, 46)
+	header.BackgroundColor3 = COLORS.panel
+	header.BorderSizePixel = 0
+	header.Parent = shell
 
-local shellStroke = Instance.new("UIStroke")
-shellStroke.Color = COLORS.stroke
-shellStroke.Thickness = 1
-shellStroke.Parent = shell
+	local title = Instance.new("TextLabel")
+	title.BackgroundTransparency = 1
+	title.Position = UDim2.fromOffset(14, 0)
+	title.Size = UDim2.new(1, -28, 1, 0)
+	title.Font = Enum.Font.GothamBold
+	title.Text = "UNICLUDE  /  MOBILE QA"
+	title.TextColor3 = COLORS.text
+	title.TextSize = 13
+	title.TextXAlignment = Enum.TextXAlignment.Left
+	title.Parent = header
 
-local top = Instance.new("Frame")
-top.Size = UDim2.new(1, 0, 0, 44)
-top.BackgroundColor3 = COLORS.panel
-top.BorderSizePixel = 0
-top.Parent = shell
+	local scroll = Instance.new("ScrollingFrame")
+	scroll.Name = "Tools"
+	scroll.Position = UDim2.fromOffset(8, 52)
+	scroll.Size = UDim2.new(1, -16, 1, -60)
+	scroll.BackgroundTransparency = 1
+	scroll.BorderSizePixel = 0
+	scroll.ScrollBarThickness = 3
+	scroll.ScrollBarImageColor3 = COLORS.stroke
+	scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+	scroll.CanvasSize = UDim2.new()
+	scroll.Parent = shell
 
-local title = Instance.new("TextLabel")
-title.BackgroundTransparency = 1
-title.Position = UDim2.fromOffset(14, 0)
-title.Size = UDim2.new(1, -100, 1, 0)
-title.Font = Enum.Font.GothamBold
-title.Text = "UNICLUDE  /  QA"
-title.TextColor3 = COLORS.text
-title.TextSize = 14
-title.TextXAlignment = Enum.TextXAlignment.Left
-title.Parent = top
+	local layout = Instance.new("UIListLayout")
+	layout.Padding = UDim.new(0, 5)
+	layout.SortOrder = Enum.SortOrder.LayoutOrder
+	layout.Parent = scroll
 
-local status = Instance.new("TextLabel")
-status.BackgroundTransparency = 1
-status.Position = UDim2.new(1, -86, 0, 0)
-status.Size = UDim2.fromOffset(70, 44)
-status.Font = Enum.Font.Gotham
-status.Text = "STUDIO"
-status.TextColor3 = COLORS.accent
-status.TextSize = 10
-status.TextXAlignment = Enum.TextXAlignment.Right
-status.Parent = top
+	local padding = Instance.new("UIPadding")
+	padding.PaddingBottom = UDim.new(0, 10)
+	padding.Parent = scroll
 
-local scroll = Instance.new("ScrollingFrame")
-scroll.Position = UDim2.fromOffset(8, 50)
-scroll.Size = UDim2.new(1, -16, 1, -58)
-scroll.BackgroundTransparency = 1
-scroll.BorderSizePixel = 0
-scroll.ScrollBarThickness = 3
-scroll.ScrollBarImageColor3 = COLORS.stroke
-scroll.CanvasSize = UDim2.new()
-scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
-scroll.Parent = shell
-
-local list = Instance.new("UIListLayout")
-list.Padding = UDim.new(0, 5)
-list.SortOrder = Enum.SortOrder.LayoutOrder
-list.Parent = scroll
-
-local padding = Instance.new("UIPadding")
-padding.PaddingBottom = UDim.new(0, 8)
-padding.Parent = scroll
-
-local function makeLabel(text)
-	local label = Instance.new("TextLabel")
-	label.BackgroundTransparency = 1
-	label.Size = UDim2.new(1, 0, 0, 22)
-	label.Font = Enum.Font.GothamBold
-	label.Text = string.upper(text)
-	label.TextColor3 = COLORS.muted
-	label.TextSize = 10
-	label.TextXAlignment = Enum.TextXAlignment.Left
-	label.Parent = scroll
-	return label
-end
-
-local function makeButton(text, callback)
-	local button = Instance.new("TextButton")
-	button.AutoButtonColor = false
-	button.Size = UDim2.new(1, 0, 0, 38)
-	button.BackgroundColor3 = COLORS.panel
-	button.BorderSizePixel = 0
-	button.Font = Enum.Font.GothamMedium
-	button.Text = text
-	button.TextColor3 = COLORS.muted
-	button.TextSize = 11
-	button.TextXAlignment = Enum.TextXAlignment.Left
-	button.Parent = scroll
-
-	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0, 6)
-	corner.Parent = button
-
-	local pad = Instance.new("UIPadding")
-	pad.PaddingLeft = UDim.new(0, 12)
-	pad.Parent = button
-
-	local stroke = Instance.new("UIStroke")
-	stroke.Color = COLORS.stroke
-	stroke.Transparency = 0.65
-	stroke.Parent = button
-
-	local function refresh()
-		local key = text:match("^([^|]+)") or text
-		local enabled = State[key] == true
-		button.Text = (enabled and "â—  " or "â—‹  ") .. text
-		button.TextColor3 = enabled and COLORS.accent or COLORS.muted
-		button.BackgroundColor3 = enabled and Color3.fromRGB(42, 50, 33) or COLORS.panel
+	local function label(text)
+		local object = Instance.new("TextLabel")
+		object.BackgroundTransparency = 1
+		object.Size = UDim2.new(1, 0, 0, 21)
+		object.Font = Enum.Font.GothamBold
+		object.Text = string.upper(text)
+		object.TextColor3 = COLORS.muted
+		object.TextSize = 10
+		object.TextXAlignment = Enum.TextXAlignment.Left
+		object.Parent = scroll
+		return object
 	end
 
-	button.Activated:Connect(function()
-		callback()
+	local buttons = {}
+	local function button(key, text, callback)
+		local object = Instance.new("TextButton")
+		object.Name = key
+		object.Size = UDim2.new(1, 0, 0, 38)
+		object.BackgroundColor3 = COLORS.panel
+		object.BorderSizePixel = 0
+		object.AutoButtonColor = false
+		object.Font = Enum.Font.GothamMedium
+		object.TextSize = 11
+		object.TextXAlignment = Enum.TextXAlignment.Left
+		object.Parent = scroll
+		addCorner(object, 6)
+		addStroke(object)
+
+		local pad = Instance.new("UIPadding")
+		pad.PaddingLeft = UDim.new(0, 12)
+		pad.Parent = object
+
+		local function refresh()
+			local enabled = State[key] == true
+			object.Text = (enabled and "â—  " or "â—‹  ") .. text
+			object.TextColor3 = enabled and COLORS.accent or COLORS.muted
+			object.BackgroundColor3 = enabled and Color3.fromRGB(42, 50, 33) or COLORS.panel
+		end
+
+		object.Activated:Connect(function()
+			callback()
+			refresh()
+		end)
+		buttons[key] = refresh
 		refresh()
-	end)
-	refresh()
-	return button, refresh
-end
-
-local function makeSlider(labelText, key, minValue, maxValue, callback)
-	local holder = Instance.new("Frame")
-	holder.Size = UDim2.new(1, 0, 0, 52)
-	holder.BackgroundColor3 = COLORS.panel
-	holder.BorderSizePixel = 0
-	holder.Parent = scroll
-	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0, 6)
-	corner.Parent = holder
-
-	local label = Instance.new("TextLabel")
-	label.BackgroundTransparency = 1
-	label.Position = UDim2.fromOffset(12, 5)
-	label.Size = UDim2.new(1, -24, 0, 18)
-	label.Font = Enum.Font.GothamMedium
-	label.TextColor3 = COLORS.text
-	label.TextSize = 11
-	label.TextXAlignment = Enum.TextXAlignment.Left
-	label.Parent = holder
-
-	local bar = Instance.new("Frame")
-	bar.Position = UDim2.fromOffset(12, 31)
-	bar.Size = UDim2.new(1, -24, 0, 6)
-	bar.BackgroundColor3 = COLORS.panel2
-	bar.BorderSizePixel = 0
-	bar.Parent = holder
-	local barCorner = Instance.new("UICorner")
-	barCorner.CornerRadius = UDim.new(1, 0)
-	barCorner.Parent = bar
-
-	local fill = Instance.new("Frame")
-	fill.BackgroundColor3 = COLORS.accent
-	fill.BorderSizePixel = 0
-	fill.Parent = bar
-	local fillCorner = Instance.new("UICorner")
-	fillCorner.CornerRadius = UDim.new(1, 0)
-	fillCorner.Parent = fill
-
-	local dragging = false
-	local function setFromX(x)
-		local alpha = math.clamp((x - bar.AbsolutePosition.X) / bar.AbsoluteSize.X, 0, 1)
-		local value = math.round(minValue + (maxValue - minValue) * alpha)
-		State[key] = value
-		fill.Size = UDim2.new(alpha, 0, 1, 0)
-		label.Text = labelText .. ": " .. tostring(value)
-		callback(value)
+		return object
 	end
-	bar.InputBegan:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-			dragging = true
-			setFromX(input.Position.X)
-		end
-	end)
-	UIS.InputChanged:Connect(function(input)
-		if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-			setFromX(input.Position.X)
-		end
-	end)
-	UIS.InputEnded:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then dragging = false end
-	end)
-	label.Text = labelText .. ": " .. tostring(State[key])
-	fill.Size = UDim2.new((State[key] - minValue) / (maxValue - minValue), 0, 1, 0)
-	return holder
-end
 
-local function section(text)
-	makeLabel(text)
+	local function slider(key, text, minValue, maxValue, callback)
+		local holder = Instance.new("Frame")
+		holder.Size = UDim2.new(1, 0, 0, 52)
+		holder.BackgroundColor3 = COLORS.panel
+		holder.BorderSizePixel = 0
+		holder.Parent = scroll
+		addCorner(holder, 6)
+
+		local valueLabel = Instance.new("TextLabel")
+		valueLabel.BackgroundTransparency = 1
+		valueLabel.Position = UDim2.fromOffset(12, 4)
+		valueLabel.Size = UDim2.new(1, -24, 0, 18)
+		valueLabel.Font = Enum.Font.GothamMedium
+		valueLabel.TextColor3 = COLORS.text
+		valueLabel.TextSize = 11
+		valueLabel.TextXAlignment = Enum.TextXAlignment.Left
+		valueLabel.Parent = holder
+
+		local bar = Instance.new("Frame")
+		bar.Position = UDim2.fromOffset(12, 31)
+		bar.Size = UDim2.new(1, -24, 0, 6)
+		bar.BackgroundColor3 = COLORS.panel2
+		bar.BorderSizePixel = 0
+		bar.Parent = holder
+		addCorner(bar, 20)
+
+		local fill = Instance.new("Frame")
+		fill.BackgroundColor3 = COLORS.accent
+		fill.BorderSizePixel = 0
+		fill.Parent = bar
+		addCorner(fill, 20)
+
+		local dragging = false
+		local function update(x)
+			local alpha = math.clamp((x - bar.AbsolutePosition.X) / math.max(bar.AbsoluteSize.X, 1), 0, 1)
+			local value = math.round(minValue + (maxValue - minValue) * alpha)
+			State[key] = value
+			fill.Size = UDim2.new(alpha, 0, 1, 0)
+			valueLabel.Text = text .. ": " .. tostring(value)
+			callback(value)
+		end
+
+		bar.InputBegan:Connect(function(input)
+			if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
+				dragging = true
+				update(input.Position.X)
+			end
+		end)
+		UserInputService.InputChanged:Connect(function(input)
+			if dragging and (input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseMovement) then
+				update(input.Position.X)
+			end
+		end)
+		UserInputService.InputEnded:Connect(function(input)
+			if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
+				dragging = false
+			end
+		end)
+
+		local alpha = (State[key] - minValue) / (maxValue - minValue)
+		fill.Size = UDim2.new(alpha, 0, 1, 0)
+		valueLabel.Text = text .. ": " .. tostring(State[key])
+	end
+
+	label("visualizaÃ§Ã£o")
+	button("ESP", "Player ESP", function() State.ESP = not State.ESP end)
+	button("Names", "Nomes", function() State.Names = not State.Names end)
+	button("Distance", "DistÃ¢ncia", function() State.Distance = not State.Distance end)
+	button("Highlight", "Highlight", function() State.Highlight = not State.Highlight end)
+
+	label("movimento de QA")
+	slider("SpeedValue", "Velocidade", 16, 60, function() if State.Speed then applyMovement() end end)
+	slider("JumpValue", "Pulo", 50, 120, function() if State.Jump then applyMovement() end end)
+	button("Speed", "Speed QA", function() State.Speed = not State.Speed; applyMovement() end)
+	button("Jump", "Jump QA", function() State.Jump = not State.Jump; applyMovement() end)
+	button("Noclip", "Noclip QA", function() setNoclip(not State.Noclip) end)
+	button("Fly", "Fly QA", function() setFly(not State.Fly) end)
+	button("ClickTP", "Click Teleport QA", function() State.ClickTP = not State.ClickTP end)
+	button("Freecam", "Freecam QA", function() setFreecam(not State.Freecam) end)
+
+	label("mundo e cÃ¢mera")
+	button("Fullbright", "Fullbright QA", function() setFullbright(not State.Fullbright) end)
+	button("XRay", "X-Ray visual", function() setXRay(not State.XRay) end)
+	button("Waypoint", "Waypoint", function() setWaypoint(not State.Waypoint) end)
+	button("Collision", "Visualizador de colisÃ£o", function() setCollision(not State.Collision) end)
+	slider("FOVValue", "FOV", 50, 110, function() if State.FOV then setFOV(true) end end)
+	button("FOV", "FOV QA", function() setFOV(not State.FOV) end)
+	button("Performance", "Performance HUD", function() setPerformance(not State.Performance) end)
+
+	label("reset")
+	button("Reset", "Resetar ferramentas", function() resetTools() end)
+
+	return header
 end
 
 -- ESP ------------------------------------------------------------------------
-local function destroyESP(player)
-	local data = espObjects[player]
+local function removeESP(playerToRemove)
+	local data = espData[playerToRemove]
 	if not data then return end
-	for _, obj in pairs(data) do
-		if typeof(obj) == "Instance" then obj:Destroy() end
-	end
-	espObjects[player] = nil
+	if data.billboard then data.billboard:Destroy() end
+	if data.highlight then data.highlight:Destroy() end
+	if data.characterConnection then data.characterConnection:Disconnect() end
+	espData[playerToRemove] = nil
 end
 
-local function createESP(player)
-	if player == LocalPlayer or espObjects[player] then return end
-	local data = {}
+local function addESP(otherPlayer)
+	if otherPlayer == player or espData[otherPlayer] then return end
 	local billboard = Instance.new("BillboardGui")
-	billboard.Name = "QA_ESP"
-	billboard.Size = UDim2.fromOffset(150, 48)
+	billboard.Name = "QA_PlayerLabel"
+	billboard.Size = UDim2.fromOffset(160, 40)
 	billboard.StudsOffset = Vector3.new(0, 3.2, 0)
 	billboard.AlwaysOnTop = true
 	billboard.Enabled = false
 	billboard.Parent = gui
-	local nameLabel = Instance.new("TextLabel")
-	nameLabel.BackgroundTransparency = 1
-	nameLabel.Size = UDim2.fromScale(1, 0.5)
-	nameLabel.Font = Enum.Font.GothamBold
-	nameLabel.TextColor3 = COLORS.accent
-	nameLabel.TextStrokeTransparency = 0.5
-	nameLabel.TextSize = 11
-	nameLabel.Parent = billboard
-	local distanceLabel = Instance.new("TextLabel")
-	distanceLabel.BackgroundTransparency = 1
-	distanceLabel.Position = UDim2.fromScale(0, 0.5)
-	distanceLabel.Size = UDim2.fromScale(1, 0.5)
-	distanceLabel.Font = Enum.Font.Gotham
-	distanceLabel.TextColor3 = COLORS.text
-	distanceLabel.TextStrokeTransparency = 0.5
-	distanceLabel.TextSize = 10
-	distanceLabel.Parent = billboard
-	data.billboard = billboard
-	data.name = nameLabel
-	data.distance = distanceLabel
+
+	local name = Instance.new("TextLabel")
+	name.BackgroundTransparency = 1
+	name.Size = UDim2.new(1, 0, 0.5, 0)
+	name.Font = Enum.Font.GothamBold
+	name.TextSize = 11
+	name.TextStrokeTransparency = 0.5
+	name.Parent = billboard
+
+	local distance = Instance.new("TextLabel")
+	distance.BackgroundTransparency = 1
+	distance.Position = UDim2.fromScale(0, 0.5)
+	distance.Size = UDim2.fromScale(1, 0.5)
+	distance.Font = Enum.Font.Gotham
+	distance.TextColor3 = COLORS.text
+	distance.TextSize = 10
+	distance.TextStrokeTransparency = 0.5
+	distance.Parent = billboard
 
 	local highlight = Instance.new("Highlight")
-	highlight.Name = "QA_Highlight"
-	highlight.FillTransparency = 0.78
+	highlight.Name = "QA_PlayerHighlight"
+	highlight.FillTransparency = 0.8
 	highlight.OutlineTransparency = 0.15
 	highlight.Enabled = false
 	highlight.Parent = gui
-	data.highlight = highlight
 
-	local function bindCharacter(character)
-		billboard.Adornee = character:FindFirstChild("Head") or character:FindFirstChild("HumanoidRootPart")
-		highlight.Adornee = character
+	local data = { billboard = billboard, name = name, distance = distance, highlight = highlight }
+	data.characterConnection = otherPlayer.CharacterAdded:Connect(function(model)
+		billboard.Adornee = model:FindFirstChild("Head") or model:FindFirstChild("HumanoidRootPart")
+		highlight.Adornee = model
+	end)
+	if otherPlayer.Character then
+		billboard.Adornee = otherPlayer.Character:FindFirstChild("Head") or otherPlayer.Character:FindFirstChild("HumanoidRootPart")
+		highlight.Adornee = otherPlayer.Character
 	end
-	if player.Character then bindCharacter(player.Character) end
-	data.characterConnection = player.CharacterAdded:Connect(bindCharacter)
-	espObjects[player] = data
+	espData[otherPlayer] = data
 end
 
-local function refreshESP()
-	for _, player in ipairs(Players:GetPlayers()) do
-		if player ~= LocalPlayer then createESP(player) end
+local function updateESP()
+	for _, otherPlayer in ipairs(Players:GetPlayers()) do
+		if otherPlayer ~= player then addESP(otherPlayer) end
 	end
-	for player, data in pairs(espObjects) do
-		local character = player.Character
-		local root = getRoot(character)
-		local humanoid = getHumanoid(character)
-		local enabled = State.ESP and root ~= nil
+	local localRoot = root()
+	for otherPlayer, data in pairs(espData) do
+		local otherRoot = otherPlayer.Character and otherPlayer.Character:FindFirstChild("HumanoidRootPart")
+		local enabled = State.ESP and otherRoot ~= nil
 		data.billboard.Enabled = enabled
 		data.highlight.Enabled = enabled and State.Highlight
 		if enabled then
-			local teamColor = State.Teams and player.TeamColor.Color or COLORS.accent
-			data.name.TextColor3 = teamColor
-			data.highlight.FillColor = teamColor
-			data.highlight.OutlineColor = teamColor
+			local color = otherPlayer.TeamColor.Color
 			data.name.Visible = State.Names
-			local localRoot = getRoot(getCharacter())
-			local distance = localRoot and math.floor((root.Position - localRoot.Position).Magnitude) or 0
+			data.name.Text = State.Names and otherPlayer.DisplayName or ""
+			data.name.TextColor3 = color
+			data.highlight.FillColor = color
+			data.highlight.OutlineColor = color
 			data.distance.Visible = State.Distance
-			data.distance.Text = State.Distance and (tostring(distance) .. " studs") or ""
-			data.name.Text = State.Names and player.DisplayName or ""
+			data.distance.Text = State.Distance and (math.floor((otherRoot.Position - localRoot.Position).Magnitude) .. " studs") or ""
 		end
 	end
 end
 
-connect(Players.PlayerAdded, function(player)
-	player.CharacterAdded:Connect(function() task.wait(0.5); createESP(player) end)
-end)
-connect(Players.PlayerRemoving, destroyESP)
-connect(RunService.RenderStepped, refreshESP)
-
--- MOVEMENT QA ----------------------------------------------------------------
-local function applyMovement()
-	local humanoid = getHumanoid(getCharacter())
-	if not humanoid then return end
-	humanoid.WalkSpeed = State.Speed and State.SpeedValue or 16
-	humanoid.UseJumpPower = true
-	humanoid.JumpPower = State.Jump and State.JumpValue or 50
+-- MOVIMENTO ------------------------------------------------------------------
+function applyMovement()
+	local currentHumanoid = humanoid()
+	if not currentHumanoid then return end
+	currentHumanoid.WalkSpeed = State.Speed and State.SpeedValue or 16
+	currentHumanoid.UseJumpPower = true
+	currentHumanoid.JumpPower = State.Jump and State.JumpValue or 50
 end
 
-local function setNoclip(enabled)
+function setNoclip(enabled)
 	State.Noclip = enabled
 	if noclipConnection then noclipConnection:Disconnect(); noclipConnection = nil end
 	if enabled then
 		noclipConnection = RunService.Stepped:Connect(function()
-			local character = getCharacter()
-			if not character then return end
-			for _, part in ipairs(character:GetDescendants()) do
-				if part:IsA("BasePart") then part.CanCollide = false end
+			local model = character()
+			if not model then return end
+			for _, object in ipairs(model:GetDescendants()) do
+				if object:IsA("BasePart") then object.CanCollide = false end
 			end
 		end)
 		notify("Noclip QA ligado")
 	end
 end
 
-local function setFly(enabled)
+function setFly(enabled)
 	State.Fly = enabled
 	if flyVelocity then flyVelocity:Destroy(); flyVelocity = nil end
 	if enabled then
-		local root = getRoot(getCharacter())
-		if not root then State.Fly = false; return end
+		local currentRoot = root()
+		if not currentRoot then State.Fly = false; return end
 		flyVelocity = Instance.new("BodyVelocity")
-		flyVelocity.MaxForce = Vector3.new(1e5, 1e5, 1e5)
+		flyVelocity.MaxForce = Vector3.new(100000, 100000, 100000)
 		flyVelocity.Velocity = Vector3.zero
-		flyVelocity.Parent = root
-		notify("Fly QA ligado: use o thumbstick para mover")
+		flyVelocity.Parent = currentRoot
+		notify("Fly QA ligado")
 	end
 end
 
 local function updateFly()
 	if not State.Fly or not flyVelocity then return end
-	local character = getCharacter()
-	local humanoid = getHumanoid(character)
+	local currentHumanoid = humanoid()
 	local camera = workspace.CurrentCamera
-	if not humanoid or not camera then return end
-	local move = humanoid.MoveDirection
-	flyVelocity.Velocity = camera.CFrame:VectorToWorldSpace(Vector3.new(move.X, 0, move.Z)) * 42
+	if currentHumanoid and camera then
+		local move = currentHumanoid.MoveDirection
+		flyVelocity.Velocity = camera.CFrame:VectorToWorldSpace(Vector3.new(move.X, 0, move.Z)) * 42
+	end
 end
-connect(RunService.RenderStepped, updateFly)
 
-local function setClickTP(enabled)
-	State.ClickTP = enabled
-	if enabled then notify("Toque no mundo para teleportar QA") end
-end
-connect(UIS.InputBegan, function(input, processed)
-	if processed or not State.ClickTP then return end
-	if input.UserInputType ~= Enum.UserInputType.MouseButton1 and input.UserInputType ~= Enum.UserInputType.Touch then return end
+function setFreecam(enabled)
+	State.Freecam = enabled
+	if freecamConnection then freecamConnection:Disconnect(); freecamConnection = nil end
 	local camera = workspace.CurrentCamera
-	local ray = camera:ViewportPointToRay(input.Position.X, input.Position.Y)
-	local params = RaycastParams.new()
-	params.FilterType = Enum.RaycastFilterType.Exclude
-	params.FilterDescendantsInstances = { getCharacter() }
-	local result = workspace:Raycast(ray.Origin, ray.Direction * 1000, params)
-	local root = getRoot(getCharacter())
-	if result and root then root.CFrame = CFrame.new(result.Position + Vector3.new(0, 3, 0)) end
-end)
+	if not enabled then
+		camera.CameraType = Enum.CameraType.Custom
+		camera.CameraSubject = humanoid()
+		return
+	end
+	camera.CameraType = Enum.CameraType.Scriptable
+	local position = camera.CFrame.Position
+	freecamConnection = RunService.RenderStepped:Connect(function(deltaTime)
+		local movement = Vector3.zero
+		if UserInputService:IsKeyDown(Enum.KeyCode.W) then movement += camera.CFrame.LookVector end
+		if UserInputService:IsKeyDown(Enum.KeyCode.S) then movement -= camera.CFrame.LookVector end
+		if UserInputService:IsKeyDown(Enum.KeyCode.A) then movement -= camera.CFrame.RightVector end
+		if UserInputService:IsKeyDown(Enum.KeyCode.D) then movement += camera.CFrame.RightVector end
+		position += movement * deltaTime * 35
+		camera.CFrame = CFrame.new(position, position + camera.CFrame.LookVector)
+	end)
+end
 
--- WORLD VISUALS --------------------------------------------------------------
-local function setFullbright(enabled)
+-- WORLD ----------------------------------------------------------------------
+function setFullbright(enabled)
 	State.Fullbright = enabled
 	if enabled then
 		originalLighting.Brightness = Lighting.Brightness
@@ -479,255 +501,259 @@ local function setFullbright(enabled)
 	end
 end
 
-local function setXRay(enabled)
+function setXRay(enabled)
 	State.XRay = enabled
 	if enabled then
-		for _, obj in ipairs(workspace:GetDescendants()) do
-			if obj:IsA("BasePart") and not obj:IsDescendantOf(getCharacter() or workspace) then
-				originalParts[obj] = obj.LocalTransparencyModifier
-				obj.LocalTransparencyModifier = math.max(obj.LocalTransparencyModifier, 0.55)
+		for _, object in ipairs(workspace:GetDescendants()) do
+			if object:IsA("BasePart") and not object:IsDescendantOf(character() or workspace) then
+				originalTransparency[object] = object.LocalTransparencyModifier
+				object.LocalTransparencyModifier = math.max(object.LocalTransparencyModifier, 0.55)
 			end
 		end
 	else
-		for part, value in pairs(originalParts) do
-			if part.Parent then part.LocalTransparencyModifier = value end
+		for object, value in pairs(originalTransparency) do
+			if object.Parent then object.LocalTransparencyModifier = value end
 		end
-		table.clear(originalParts)
+		table.clear(originalTransparency)
 	end
 end
 
-local function setWaypoint(enabled)
+function setWaypoint(enabled)
 	State.Waypoint = enabled
-	if waypointPart then waypointPart:Destroy(); waypointPart = nil end
-	if enabled then
-		local root = getRoot(getCharacter())
-		if not root then return end
-		waypointPart = Instance.new("Part")
-		waypointPart.Name = "QA_Waypoint"
-		waypointPart.Anchored = true
-		waypointPart.CanCollide = false
-		waypointPart.Size = Vector3.new(2, 0.25, 2)
-		waypointPart.Color = COLORS.accent
-		waypointPart.Material = Enum.Material.Neon
-		waypointPart.CFrame = root.CFrame * CFrame.new(0, -3, -8)
-		waypointPart.Parent = workspace
+	if waypoint then waypoint:Destroy(); waypoint = nil end
+	if enabled and root() then
+		waypoint = Instance.new("Part")
+		waypoint.Name = "QA_Waypoint"
+		waypoint.Anchored = true
+		waypoint.CanCollide = false
+		waypoint.Size = Vector3.new(2, 0.2, 2)
+		waypoint.Color = COLORS.accent
+		waypoint.Material = Enum.Material.Neon
+		waypoint.CFrame = root().CFrame * CFrame.new(0, -3, -8)
+		waypoint.Parent = workspace
 	end
 end
 
-local function setRegion(enabled)
-	State.Region = enabled
-	if regionPart then regionPart:Destroy(); regionPart = nil end
-	if enabled then
-		regionPart = Instance.new("Part")
-		regionPart.Name = "QA_RegionMarker"
-		regionPart.Anchored = true
-		regionPart.CanCollide = false
-		regionPart.Size = Vector3.new(24, 0.15, 24)
-		regionPart.Color = COLORS.info
-		regionPart.Transparency = 0.72
-		regionPart.Material = Enum.Material.Neon
-		regionPart.CFrame = CFrame.new((getRoot(getCharacter()) and getRoot(getCharacter()).Position or Vector3.zero) - Vector3.new(0, 3, 0))
-		regionPart.Parent = workspace
-	end
-end
-
-local function setCollisionViewer(enabled)
+function setCollision(enabled)
 	State.Collision = enabled
-	for _, obj in ipairs(workspace:GetDescendants()) do
-		if obj:IsA("BasePart") then
+	for _, object in ipairs(workspace:GetDescendants()) do
+		if object:IsA("BasePart") then
 			if enabled then
-				obj:SetAttribute("QA_OriginalColor", obj.Color)
-				obj.Color = obj.CanCollide and Color3.fromRGB(105, 205, 120) or Color3.fromRGB(230, 105, 95)
-			elseif obj:GetAttribute("QA_OriginalColor") then
-				obj.Color = obj:GetAttribute("QA_OriginalColor")
-				obj:SetAttribute("QA_OriginalColor", nil)
+				if object:GetAttribute("QA_OriginalColor") == nil then object:SetAttribute("QA_OriginalColor", object.Color) end
+				object.Color = object.CanCollide and Color3.fromRGB(105, 205, 120) or Color3.fromRGB(230, 105, 95)
+			else
+				local original = object:GetAttribute("QA_OriginalColor")
+				if typeof(original) == "Color3" then object.Color = original end
+				object:SetAttribute("QA_OriginalColor", nil)
 			end
 		end
 	end
 end
 
-local function setFOV(enabled)
+function setFOV(enabled)
 	State.FOV = enabled
 	local camera = workspace.CurrentCamera
 	if camera then camera.FieldOfView = enabled and State.FOVValue or 70 end
 end
 
-local function setFreecam(enabled)
-	State.Freecam = enabled
-	if freecamConnection then freecamConnection:Disconnect(); freecamConnection = nil end
-	if not enabled then
-		local camera = workspace.CurrentCamera
-		camera.CameraType = Enum.CameraType.Custom
-		camera.CameraSubject = getHumanoid(getCharacter())
-		return
-	end
-	local camera = workspace.CurrentCamera
-	camera.CameraType = Enum.CameraType.Scriptable
-	local position = camera.CFrame.Position
-	freecamConnection = RunService.RenderStepped:Connect(function(dt)
-		local move = Vector3.zero
-		if UIS:IsKeyDown(Enum.KeyCode.W) then move += camera.CFrame.LookVector end
-		if UIS:IsKeyDown(Enum.KeyCode.S) then move -= camera.CFrame.LookVector end
-		if UIS:IsKeyDown(Enum.KeyCode.A) then move -= camera.CFrame.RightVector end
-		if UIS:IsKeyDown(Enum.KeyCode.D) then move += camera.CFrame.RightVector end
-		position += move * dt * 35
-		camera.CFrame = CFrame.new(position, position + camera.CFrame.LookVector)
+local performanceLabel
+function setPerformance(enabled)
+	State.Performance = enabled
+	if performanceLabel then performanceLabel.Visible = enabled end
+	if performanceConnection then performanceConnection:Disconnect(); performanceConnection = nil end
+	if not enabled then return end
+
+	local elapsed = 0
+	local frames = 0
+	performanceConnection = RunService.RenderStepped:Connect(function(deltaTime)
+		elapsed += deltaTime
+		frames += 1
+		if elapsed >= 0.5 and performanceLabel then
+			performanceLabel.Text = string.format("  %d FPS  Â·  %.1f ms", math.floor(frames / elapsed), deltaTime * 1000)
+			elapsed = 0
+			frames = 0
+		end
 	end)
 end
 
--- PERFORMANCE HUD ------------------------------------------------------------
-local perfLabel = Instance.new("TextLabel")
-perfLabel.BackgroundColor3 = COLORS.bg
-perfLabel.BackgroundTransparency = 0.15
-perfLabel.Position = UDim2.fromOffset(16, 50)
-perfLabel.Size = UDim2.fromOffset(190, 24)
-perfLabel.Visible = false
-perfLabel.Font = Enum.Font.Code
-perfLabel.TextColor3 = COLORS.accent
-perfLabel.TextSize = 11
-perfLabel.TextXAlignment = Enum.TextXAlignment.Left
-perfLabel.Parent = gui
-local perfCorner = Instance.new("UICorner")
-perfCorner.CornerRadius = UDim.new(0, 5)
-perfCorner.Parent = perfLabel
-
-local function setPerformance(enabled)
-	State.Perf = enabled
-	perfLabel.Visible = enabled
-	if perfConnection then perfConnection:Disconnect(); perfConnection = nil end
-	if enabled then
-		local elapsed = 0
-		local frames = 0
-		perfConnection = RunService.RenderStepped:Connect(function(dt)
-			elapsed += dt
-			frames += 1
-			if elapsed >= 0.5 then
-				local fps = math.floor(frames / elapsed)
-				perfLabel.Text = string.format("  %d FPS  Â·  %.1f ms", fps, dt * 1000)
-				elapsed = 0
-				frames = 0
-			end
-		end)
-	end
-end
-
--- CONTROLS -------------------------------------------------------------------
-section("visualizaÃ§Ã£o")
-makeButton("ESP", function() State.ESP = not State.ESP end)
-makeButton("Names", function() State.Names = not State.Names end)
-makeButton("Distance", function() State.Distance = not State.Distance end)
-makeButton("Tracers", function() State.Tracers = not State.Tracers end)
-makeButton("Boxes", function() State.Boxes = not State.Boxes end)
-makeButton("Health", function() State.Health = not State.Health end)
-makeButton("Teams", function() State.Teams = not State.Teams end)
-makeButton("Highlight", function() State.Highlight = not State.Highlight end)
-
-section("movimento QA")
-makeSlider("Speed", "SpeedValue", 16, 60, applyMovement)
-makeSlider("Jump", "JumpValue", 50, 120, applyMovement)
-makeButton("Speed", function() State.Speed = not State.Speed; applyMovement() end)
-makeButton("Jump", function() State.Jump = not State.Jump; applyMovement() end)
-makeButton("Noclip", function() setNoclip(not State.Noclip) end)
-makeButton("Fly", function() setFly(not State.Fly) end)
-makeButton("ClickTP", function() setClickTP(not State.ClickTP) end)
-makeButton("Freecam", function() setFreecam(not State.Freecam) end)
-
-section("mundo e cÃ¢mera")
-makeButton("Fullbright", function() setFullbright(not State.Fullbright) end)
-makeButton("XRay", function() setXRay(not State.XRay) end)
-makeButton("Waypoint", function() setWaypoint(not State.Waypoint) end)
-makeButton("Region", function() setRegion(not State.Region) end)
-makeButton("Collision", function() setCollisionViewer(not State.Collision) end)
-makeSlider("FOV", "FOVValue", 50, 110, function() if State.FOV then setFOV(true) end end)
-makeButton("FOV", function() setFOV(not State.FOV) end)
-makeButton("Performance", function() setPerformance(not State.Perf) end)
-
-section("QA")
-makeButton("Reset", function()
+function resetTools()
 	State.Speed = false
 	State.Jump = false
 	setNoclip(false)
 	setFly(false)
-	setClickTP(false)
 	setFreecam(false)
 	setFullbright(false)
 	setXRay(false)
 	setWaypoint(false)
-	setRegion(false)
-	setCollisionViewer(false)
+	setCollision(false)
 	setFOV(false)
 	setPerformance(false)
+	State.ESP = false
+	State.Highlight = false
 	applyMovement()
-	notify("Ferramentas QA resetadas")
+	notify("Ferramentas resetadas")
+end
+
+-- TELEPORT POR TOQUE ---------------------------------------------------------
+connect(UserInputService.InputBegan, function(input, processed)
+	if processed or not State.ClickTP then return end
+	if input.UserInputType ~= Enum.UserInputType.Touch and input.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
+	local camera = workspace.CurrentCamera
+	local ray = camera:ViewportPointToRay(input.Position.X, input.Position.Y)
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	params.FilterDescendantsInstances = { character() }
+	local hit = workspace:Raycast(ray.Origin, ray.Direction * 1000, params)
+	if hit and root() then root().CFrame = CFrame.new(hit.Position + Vector3.new(0, 3, 0)) end
 end)
 
--- Drag touch/mouse pelo cabeÃ§alho -------------------------------------------
-do
+-- DRAG MOBILE ---------------------------------------------------------------
+local function makeDraggable(handle, object)
 	local dragging = false
-	local dragStart: Vector3
-	local startPosition: UDim2
-	top.InputBegan:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+	local startInput
+	local startPosition
+	handle.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
 			dragging = true
-			dragStart = input.Position
-			startPosition = shell.Position
+			startInput = input.Position
+			startPosition = object.Position
 		end
 	end)
-	UIS.InputChanged:Connect(function(input)
+	UserInputService.InputChanged:Connect(function(input)
 		if not dragging then return end
-		if input.UserInputType ~= Enum.UserInputType.MouseMovement and input.UserInputType ~= Enum.UserInputType.Touch then return end
-		local delta = input.Position - dragStart
-		shell.Position = UDim2.fromOffset(startPosition.X.Offset + delta.X, startPosition.Y.Offset + delta.Y)
+		if input.UserInputType ~= Enum.UserInputType.Touch and input.UserInputType ~= Enum.UserInputType.MouseMovement then return end
+		local delta = input.Position - startInput
+		object.Position = UDim2.fromOffset(startPosition.X.Offset + delta.X, startPosition.Y.Offset + delta.Y)
 	end)
-	UIS.InputEnded:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then dragging = false end
+	UserInputService.InputEnded:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end
 	end)
 end
 
--- BotÃ£o flutuante para nÃ£o atrapalhar a jogabilidade ------------------------
+-- BOOT -----------------------------------------------------------------------
+createGui()
+
+performanceLabel = Instance.new("TextLabel")
+performanceLabel.Size = UDim2.fromOffset(190, 25)
+performanceLabel.Position = UDim2.fromOffset(14, 48)
+performanceLabel.BackgroundColor3 = COLORS.bg
+performanceLabel.BackgroundTransparency = 0.1
+performanceLabel.Font = Enum.Font.Code
+performanceLabel.TextColor3 = COLORS.accent
+performanceLabel.TextSize = 11
+performanceLabel.TextXAlignment = Enum.TextXAlignment.Left
+performanceLabel.Visible = false
+performanceLabel.Parent = gui
+addCorner(performanceLabel, 5)
+
+local header = shell:FindFirstChild("Header")
+makeDraggable(header, shell)
+
+-- ReconstrÃ³i os controles aqui, separado do construtor para as funÃ§Ãµes jÃ¡ existirem.
+local scroll = shell:FindFirstChild("Tools")
+local layout = scroll:FindFirstChildOfClass("UIListLayout")
+local function uiLabel(text)
+	local object = Instance.new("TextLabel")
+	object.BackgroundTransparency = 1
+	object.Size = UDim2.new(1, 0, 0, 21)
+	object.Font = Enum.Font.GothamBold
+	object.Text = string.upper(text)
+	object.TextColor3 = COLORS.muted
+	object.TextSize = 10
+	object.TextXAlignment = Enum.TextXAlignment.Left
+	object.Parent = scroll
+end
+local function uiButton(key, text, callback)
+	local object = Instance.new("TextButton")
+	object.Size = UDim2.new(1, 0, 0, 38)
+	object.BackgroundColor3 = COLORS.panel
+	object.BorderSizePixel = 0
+	object.AutoButtonColor = false
+	object.Font = Enum.Font.GothamMedium
+	object.TextSize = 11
+	object.TextXAlignment = Enum.TextXAlignment.Left
+	object.Parent = scroll
+	addCorner(object, 6)
+	addStroke(object)
+	local pad = Instance.new("UIPadding")
+	pad.PaddingLeft = UDim.new(0, 12)
+	pad.Parent = object
+	local function refresh()
+		local on = State[key] == true
+		object.Text = (on and "â—  " or "â—‹  ") .. text
+		object.TextColor3 = on and COLORS.accent or COLORS.muted
+		object.BackgroundColor3 = on and Color3.fromRGB(42, 50, 33) or COLORS.panel
+	end
+	object.Activated:Connect(function() callback(); refresh() end)
+	refresh()
+end
+
+uiLabel("visualizaÃ§Ã£o")
+uiButton("ESP", "Player ESP", function() State.ESP = not State.ESP end)
+uiButton("Names", "Nomes", function() State.Names = not State.Names end)
+uiButton("Distance", "DistÃ¢ncia", function() State.Distance = not State.Distance end)
+uiButton("Highlight", "Highlight", function() State.Highlight = not State.Highlight end)
+uiLabel("movimento QA")
+uiButton("Speed", "Speed QA", function() State.Speed = not State.Speed; applyMovement() end)
+uiButton("Jump", "Jump QA", function() State.Jump = not State.Jump; applyMovement() end)
+uiButton("Noclip", "Noclip QA", function() setNoclip(not State.Noclip) end)
+uiButton("Fly", "Fly QA", function() setFly(not State.Fly) end)
+uiButton("ClickTP", "Click Teleport QA", function() State.ClickTP = not State.ClickTP end)
+uiButton("Freecam", "Freecam QA", function() setFreecam(not State.Freecam) end)
+uiLabel("mundo e cÃ¢mera")
+uiButton("Fullbright", "Fullbright QA", function() setFullbright(not State.Fullbright) end)
+uiButton("XRay", "X-Ray visual", function() setXRay(not State.XRay) end)
+uiButton("Waypoint", "Waypoint", function() setWaypoint(not State.Waypoint) end)
+uiButton("Collision", "Visualizador de colisÃ£o", function() setCollision(not State.Collision) end)
+uiButton("FOV", "FOV QA", function() setFOV(not State.FOV) end)
+uiButton("Performance", "Performance HUD", function() setPerformance(not State.Performance) end)
+uiLabel("controles")
+uiButton("Reset", "Resetar ferramentas", resetTools)
+
 local toggle = Instance.new("TextButton")
-toggle.Size = UDim2.fromOffset(44, 44)
-toggle.Position = UDim2.fromOffset(16, 540)
+toggle.Name = "TogglePanel"
+toggle.Size = UDim2.fromOffset(46, 46)
+toggle.Position = UDim2.fromOffset(14, 545)
 toggle.BackgroundColor3 = COLORS.panel
+toggle.BorderSizePixel = 0
+toggle.AutoButtonColor = false
+toggle.Font = Enum.Font.GothamBold
 toggle.Text = "QA"
 toggle.TextColor3 = COLORS.accent
-toggle.Font = Enum.Font.GothamBold
 toggle.TextSize = 11
-toggle.AutoButtonColor = false
 toggle.Parent = gui
-local toggleCorner = Instance.new("UICorner")
-toggleCorner.CornerRadius = UDim.new(1, 0)
-toggleCorner.Parent = toggle
-local toggleStroke = Instance.new("UIStroke")
-toggleStroke.Color = COLORS.accent
-toggleStroke.Parent = toggle
+addCorner(toggle, 50)
+addStroke(toggle, COLORS.accent)
 toggle.Activated:Connect(function()
-	panelOpen = not panelOpen
-	shell.Visible = panelOpen
+	panelVisible = not panelVisible
+	shell.Visible = panelVisible
 end)
 
--- Respawn safety -------------------------------------------------------------
-characterConnection = LocalPlayer.CharacterAdded:Connect(function()
+connect(Players.PlayerAdded, function(otherPlayer)
+	otherPlayer.CharacterAdded:Connect(function() task.wait(0.4); addESP(otherPlayer) end)
+end)
+connect(Players.PlayerRemoving, removeESP)
+connect(RunService.RenderStepped, updateESP)
+connect(RunService.RenderStepped, updateFly)
+connect(player.CharacterAdded, function()
 	task.wait(0.5)
 	applyMovement()
 	if State.Fly then setFly(true) end
 	if State.Noclip then setNoclip(true) end
 end)
 
--- Cleanup if GUI is removed --------------------------------------------------
+for _, otherPlayer in ipairs(Players:GetPlayers()) do
+	addESP(otherPlayer)
+end
+
+-- RemoÃ§Ã£o segura pelo botÃ£o de fechar pelo prÃ³prio jogo.
 gui.Destroying:Connect(function()
-	for _, c in ipairs(connections) do c:Disconnect() end
-	if noclipConnection then noclipConnection:Disconnect() end
-	if freecamConnection then freecamConnection:Disconnect() end
-	if perfConnection then perfConnection:Disconnect() end
-	for player in pairs(espObjects) do destroyESP(player) end
-	if waypointPart then waypointPart:Destroy() end
-	if regionPart then regionPart:Destroy() end
-	if flyVelocity then flyVelocity:Destroy() end
-	setFullbright(false)
-	setXRay(false)
-	setCollisionViewer(false)
+	if destroyed then return end
+	destroyed = true
+	resetTools()
+	for _, connection in ipairs(connections) do connection:Disconnect() end
+	for otherPlayer in pairs(espData) do removeESP(otherPlayer) end
 end)
 
-notify("Mobile QA Toolkit pronto")
-print("[UNICLUDE QA] 22 ferramentas carregadas, modo autorizado")
+notify("Mobile QA pronto")
+print("[UNICLUDE QA] LocalScript carregado com sucesso")
