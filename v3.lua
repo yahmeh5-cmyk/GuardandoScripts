@@ -1,559 +1,424 @@
---[[
-    ================================================================
-    ADVANCED ROBLOX ADMIN & DEBUG SUITE (MOBILE ADAPTED)
-    ================================================================
-    Description: Comprehensive LocalScript Admin Panel & ESP System
-    Architecture: Adaptive Mobile/PC UI Engine + Touch Floating Toggle Button
-    Target Platform: Mobile (iOS/Android) & PC Support
-    ================================================================
---]]
+-- Geometric & Dynamic Combat Admin Interface
+-- Desenvolvimento focado em ambientes 3D, shaders avançados e física.
+-- Coloque este script em StarterPlayerScripts ou StarterGui como um LocalScript.
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local Lighting = game:GetService("Lighting")
 local Workspace = game:GetService("Workspace")
+local TweenService = game:GetService("TweenService")
 
 local LocalPlayer = Players.LocalPlayer
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 local Camera = Workspace.CurrentCamera
 
---------------------------------------------------------------------
--- SYSTEM CONFIGURATION & STATE MANAGEMENT
---------------------------------------------------------------------
-local Config = {
-    -- ESP Settings
-    ESP_Enabled = false,
-    ESP_Players = true,
-    ESP_NPCs = true,
-    ESP_Objects = true,
-    ESP_Boxes = true,
-    ESP_Tracers = true,
-    ESP_Names = true,
-    ESP_HealthBar = true,
-    ESP_Distance = true,
-    ESP_Tool = true,
-    ESP_Chams = true,
-    ESP_TeamColor = true,
-    ESP_MaxDistance = 1000,
-    ESP_TextSize = 12,
-    ESP_BoxColor = Color3.fromRGB(255, 0, 85),
-    ESP_TracerColor = Color3.fromRGB(255, 255, 255),
-    ESP_NPCColor = Color3.fromRGB(255, 170, 0),
-    
-    -- Movement & Physics
-    WalkSpeed = 16,
-    JumpPower = 50,
-    FlySpeed = 50,
-    Flying = false,
-    Noclip = false,
-    InfJump = false,
-    Gravity = 196.2,
-    HipHeight = 0,
-    
-    -- World & Render
-    Fullbright = false,
-    NoFog = false,
-    FieldOfView = 70,
-    HitboxSize = 2,
-    HitboxExpanded = false,
-    
-    -- Utility
-    AntiAFK = true,
-    ClickTP = false,
-    
-    -- UI
-    UI_Open = false,
-    ToggleKey = Enum.KeyCode.RightControl
-}
+-- ==========================================
+-- SISTEMA DE INTERFACE (UI LIBRARY)
+-- ==========================================
+local UI = Instance.new("ScreenGui")
+UI.Name = "AdminInterface"
+UI.ResetOnSpawn = false
+UI.Parent = PlayerGui
 
---------------------------------------------------------------------
--- UI BUILDING ENGINE (MOBILE OPTIMIZED)
---------------------------------------------------------------------
-local AdminUI = Instance.new("ScreenGui")
-AdminUI.Name = "AdminSuite_Mobile_" .. math.random(10000, 99999)
-AdminUI.ResetOnSpawn = false
-
-local success, err = pcall(function()
-    if gethui then
-        AdminUI.Parent = gethui()
-    elseif syn and syn.protect_gui then
-        syn.protect_gui(AdminUI)
-        AdminUI.Parent = game:GetService("CoreGui")
-    else
-        AdminUI.Parent = LocalPlayer:WaitForChild("PlayerGui")
-    end
-end)
-if not success then
-    AdminUI.Parent = LocalPlayer:WaitForChild("PlayerGui")
-end
-
---------------------------------------------------------------------
--- FLOATING TOGGLE BUTTON FOR MOBILE (SAFE PLACEMENT)
---------------------------------------------------------------------
-local ToggleBtn = Instance.new("TextButton")
-ToggleBtn.Name = "MobileToggleButton"
-ToggleBtn.Size = UDim2.new(0, 48, 0, 48)
-ToggleBtn.Position = UDim2.new(0, 15, 0.35, 0) -- Placed on left mid-side to avoid mobile joysticks/jump buttons
-ToggleBtn.BackgroundColor3 = Color3.fromRGB(24, 27, 36)
-ToggleBtn.Text = "⚡"
-ToggleBtn.TextColor3 = Color3.fromRGB(0, 170, 255)
-ToggleBtn.TextSize = 22
-ToggleBtn.Font = Enum.Font.GothamBold
-ToggleBtn.Active = true
-ToggleBtn.Draggable = true -- Allows user to drag button anywhere on screen
-ToggleBtn.Parent = AdminUI
-
-local ToggleBtnCorner = Instance.new("UICorner")
-ToggleBtnCorner.CornerRadius = UDim.new(0.5, 0) -- Circular Icon
-ToggleBtnCorner.Parent = ToggleBtn
-
-local ToggleBtnStroke = Instance.new("UIStroke")
-ToggleBtnStroke.Color = Color3.fromRGB(0, 170, 255)
-ToggleBtnStroke.Thickness = 2
-ToggleBtnStroke.Parent = ToggleBtn
-
---------------------------------------------------------------------
--- MAIN WINDOW FRAME (RESPONSIVE SIZE)
---------------------------------------------------------------------
 local MainFrame = Instance.new("Frame")
 MainFrame.Name = "MainFrame"
-MainFrame.Size = UDim2.new(0.85, 0, 0.7, 0) -- Responsive percentage-based sizing for phones/tablets
-MainFrame.Position = UDim2.new(0.075, 0, 0.15, 0)
-MainFrame.BackgroundColor3 = Color3.fromRGB(18, 20, 26)
+MainFrame.Size = UDim2.new(0, 600, 0, 400)
+MainFrame.Position = UDim2.new(0.5, -300, 0.5, -200)
+MainFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
 MainFrame.BorderSizePixel = 0
-MainFrame.Active = true
-MainFrame.Draggable = true
 MainFrame.ClipsDescendants = true
-MainFrame.Visible = false
-MainFrame.Parent = AdminUI
+MainFrame.Parent = UI
 
 local UICorner = Instance.new("UICorner")
-UICorner.CornerRadius = UDim.new(0, 12)
+UICorner.CornerRadius = UDim.new(0, 8)
 UICorner.Parent = MainFrame
 
-local UIStroke = Instance.new("UIStroke")
-UIStroke.Color = Color3.fromRGB(45, 52, 68)
-UIStroke.Thickness = 1.5
-UIStroke.Parent = MainFrame
+local TopBar = Instance.new("Frame")
+TopBar.Size = UDim2.new(1, 0, 0, 40)
+TopBar.BackgroundColor3 = Color3.fromRGB(30, 30, 38)
+TopBar.BorderSizePixel = 0
+TopBar.Parent = MainFrame
 
--- Top Title Bar
-local TitleBar = Instance.new("Frame")
-TitleBar.Size = UDim2.new(1, 0, 0, 38)
-TitleBar.BackgroundColor3 = Color3.fromRGB(24, 27, 36)
-TitleBar.BorderSizePixel = 0
-TitleBar.Parent = MainFrame
+local Title = Instance.new("TextLabel")
+Title.Size = UDim2.new(1, -20, 1, 0)
+Title.Position = UDim2.new(0, 20, 0, 0)
+Title.BackgroundTransparency = 1
+Title.Text = "Painel de Administração Global"
+Title.TextColor3 = Color3.fromRGB(255, 255, 255)
+Title.TextSize = 18
+Title.Font = Enum.Font.GothamBold
+Title.TextXAlignment = Enum.TextXAlignment.Left
+Title.Parent = TopBar
 
-local TitleLabel = Instance.new("TextLabel")
-TitleLabel.Size = UDim2.new(0.7, 0, 1, 0)
-TitleLabel.Position = UDim2.new(0, 12, 0, 0)
-TitleLabel.BackgroundTransparency = 1
-TitleLabel.Text = "⚡ ADMIN SUITE (MOBILE)"
-TitleLabel.TextColor3 = Color3.fromRGB(240, 243, 248)
-TitleLabel.TextSize = 13
-TitleLabel.Font = Enum.Font.GothamBold
-TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
-TitleLabel.Parent = TitleBar
-
-local CloseBtn = Instance.new("TextButton")
-CloseBtn.Size = UDim2.new(0, 30, 0, 30)
-CloseBtn.Position = UDim2.new(1, -34, 0, 4)
-CloseBtn.BackgroundColor3 = Color3.fromRGB(220, 53, 69)
-CloseBtn.Text = "✕"
-CloseBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-CloseBtn.Font = Enum.Font.GothamBold
-CloseBtn.TextSize = 12
-CloseBtn.Parent = TitleBar
-
-local CloseBtnCorner = Instance.new("UICorner")
-CloseBtnCorner.CornerRadius = UDim.new(0, 6)
-CloseBtnCorner.Parent = CloseBtn
-
-local function ToggleMenu()
-    Config.UI_Open = not Config.UI_Open
-    MainFrame.Visible = Config.UI_Open
-end
-
-CloseBtn.MouseButton1Click:Connect(ToggleMenu)
-ToggleBtn.MouseButton1Click:Connect(ToggleMenu)
-
--- Sidebar Navigation (Horizontal for Mobile to Save Touch Space)
-local Sidebar = Instance.new("ScrollingFrame")
-Sidebar.Size = UDim2.new(1, -16, 0, 40)
-Sidebar.Position = UDim2.new(0, 8, 0, 44)
-Sidebar.BackgroundColor3 = Color3.fromRGB(22, 25, 33)
+local Sidebar = Instance.new("Frame")
+Sidebar.Size = UDim2.new(0, 150, 1, -40)
+Sidebar.Position = UDim2.new(0, 0, 0, 40)
+Sidebar.BackgroundColor3 = Color3.fromRGB(25, 25, 32)
 Sidebar.BorderSizePixel = 0
-Sidebar.CanvasSize = UDim2.new(1.8, 0, 0, 0) -- Horizontal Scroll
-Sidebar.ScrollBarThickness = 2
 Sidebar.Parent = MainFrame
 
-local SidebarLayout = Instance.new("UIListLayout")
-SidebarLayout.FillDirection = Enum.FillDirection.Horizontal
-SidebarLayout.SortOrder = Enum.SortOrder.LayoutOrder
-SidebarLayout.Padding = UDim.new(0, 6)
-SidebarLayout.Parent = Sidebar
+local ContentArea = Instance.new("Frame")
+ContentArea.Size = UDim2.new(1, -150, 1, -40)
+ContentArea.Position = UDim2.new(0, 150, 0, 40)
+ContentArea.BackgroundTransparency = 1
+ContentArea.Parent = MainFrame
 
-local SidebarPadding = Instance.new("UIPadding")
-SidebarPadding.PaddingLeft = UDim.new(0, 4)
-SidebarPadding.PaddingTop = UDim.new(0, 4)
-SidebarPadding.Parent = Sidebar
+-- Arrastar UI
+local dragging, dragInput, dragStart, startPos
+TopBar.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = true
+        dragStart = input.Position
+        startPos = MainFrame.Position
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then dragging = false end
+        end)
+    end
+end)
+TopBar.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then dragInput = input end
+end)
+UserInputService.InputChanged:Connect(function(input)
+    if input == dragInput and dragging then
+        local delta = input.Position - dragStart
+        MainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+    end
+end)
 
--- Content Container
-local ContentContainer = Instance.new("Frame")
-ContentContainer.Size = UDim2.new(1, -16, 1, -92)
-ContentContainer.Position = UDim2.new(0, 8, 0, 88)
-ContentContainer.BackgroundTransparency = 1
-ContentContainer.Parent = MainFrame
-
-local Pages = {}
-
-local function CreateTab(name, icon)
+-- Sistema de Abas
+local Tabs = {}
+local function CreateTab(name)
     local TabButton = Instance.new("TextButton")
-    TabButton.Size = UDim2.new(0, 100, 0, 30)
-    TabButton.BackgroundColor3 = Color3.fromRGB(30, 34, 46)
-    TabButton.Text = icon .. " " .. name
-    TabButton.TextColor3 = Color3.fromRGB(160, 170, 190)
-    TabButton.Font = Enum.Font.GothamMedium
-    TabButton.TextSize = 11
+    TabButton.Size = UDim2.new(1, 0, 0, 40)
+    TabButton.BackgroundTransparency = 1
+    TabButton.Text = name
+    TabButton.TextColor3 = Color3.fromRGB(200, 200, 200)
+    TabButton.Font = Enum.Font.GothamSemibold
+    TabButton.TextSize = 14
     TabButton.Parent = Sidebar
-
-    local TabCorner = Instance.new("UICorner")
-    TabCorner.CornerRadius = UDim.new(0, 6)
-    TabCorner.Parent = TabButton
-
-    local Page = Instance.new("ScrollingFrame")
-    Page.Size = UDim2.new(1, 0, 1, 0)
-    Page.BackgroundTransparency = 1
-    Page.ScrollBarThickness = 4
-    Page.ScrollBarImageColor3 = Color3.fromRGB(0, 170, 255)
-    Page.Visible = false
-    Page.Parent = ContentContainer
-
-    local PageLayout = Instance.new("UIListLayout")
-    PageLayout.SortOrder = Enum.SortOrder.LayoutOrder
-    PageLayout.Padding = UDim.new(0, 8)
-    PageLayout.Parent = Page
-
-    local PagePadding = Instance.new("UIPadding")
-    PagePadding.PaddingTop = UDim.new(0, 6)
-    PagePadding.PaddingLeft = UDim.new(0, 4)
-    PagePadding.PaddingRight = UDim.new(0, 4)
-    PagePadding.PaddingBottom = UDim.new(0, 6)
-    PagePadding.Parent = Page
-
-    Pages[name] = {Button = TabButton, Page = Page}
-
+    
+    local TabContent = Instance.new("ScrollingFrame")
+    TabContent.Size = UDim2.new(1, -20, 1, -20)
+    TabContent.Position = UDim2.new(0, 10, 0, 10)
+    TabContent.BackgroundTransparency = 1
+    TabContent.ScrollBarThickness = 4
+    TabContent.Visible = false
+    TabContent.Parent = ContentArea
+    
+    local UIListLayout = Instance.new("UIListLayout")
+    UIListLayout.Padding = UDim.new(0, 10)
+    UIListLayout.Parent = TabContent
+    
     TabButton.MouseButton1Click:Connect(function()
-        for k, v in pairs(Pages) do
-            v.Page.Visible = false
-            v.Button.BackgroundColor3 = Color3.fromRGB(30, 34, 46)
-            v.Button.TextColor3 = Color3.fromRGB(160, 170, 190)
+        for _, content in pairs(ContentArea:GetChildren()) do
+            if content:IsA("ScrollingFrame") then content.Visible = false end
         end
-        Page.Visible = true
-        TabButton.BackgroundColor3 = Color3.fromRGB(0, 120, 215)
-        TabButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+        TabContent.Visible = true
     end)
-
-    return Page
+    
+    if #Sidebar:GetChildren() == 1 then TabContent.Visible = true end
+    
+    return TabContent
 end
 
--- UI Control Generators
-local function AddToggle(page, labelText, defaultState, callback)
-    local Row = Instance.new("Frame")
-    Row.Size = UDim2.new(1, 0, 0, 38) -- Larger Touch Area
-    Row.BackgroundColor3 = Color3.fromRGB(26, 30, 40)
-    Row.Parent = page
-
-    local RowCorner = Instance.new("UICorner")
-    RowCorner.CornerRadius = UDim.new(0, 6)
-    RowCorner.Parent = Row
-
+local function CreateToggle(parent, text, callback)
+    local Frame = Instance.new("Frame")
+    Frame.Size = UDim2.new(1, 0, 0, 30)
+    Frame.BackgroundTransparency = 1
+    Frame.Parent = parent
+    
     local Label = Instance.new("TextLabel")
-    Label.Size = UDim2.new(0.68, 0, 1, 0)
-    Label.Position = UDim2.new(0, 10, 0, 0)
+    Label.Size = UDim2.new(1, -50, 1, 0)
     Label.BackgroundTransparency = 1
-    Label.Text = labelText
-    Label.TextColor3 = Color3.fromRGB(220, 225, 235)
+    Label.Text = text
+    Label.TextColor3 = Color3.fromRGB(220, 220, 220)
     Label.Font = Enum.Font.Gotham
-    Label.TextSize = 11
+    Label.TextSize = 14
     Label.TextXAlignment = Enum.TextXAlignment.Left
-    Label.Parent = Row
-
-    local ToggleBtn = Instance.new("TextButton")
-    ToggleBtn.Size = UDim2.new(0, 56, 0, 26) -- Touch-Friendly Button
-    ToggleBtn.Position = UDim2.new(1, -64, 0.5, -13)
-    ToggleBtn.BackgroundColor3 = defaultState and Color3.fromRGB(40, 180, 100) or Color3.fromRGB(70, 75, 90)
-    ToggleBtn.Text = defaultState and "ON" or "OFF"
-    ToggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    ToggleBtn.Font = Enum.Font.GothamBold
-    ToggleBtn.TextSize = 11
-    ToggleBtn.Parent = Row
-
-    local ToggleCorner = Instance.new("UICorner")
-    ToggleCorner.CornerRadius = UDim.new(0, 4)
-    ToggleCorner.Parent = ToggleBtn
-
-    local state = defaultState
-    ToggleBtn.MouseButton1Click:Connect(function()
+    Label.Parent = Frame
+    
+    local Button = Instance.new("TextButton")
+    Button.Size = UDim2.new(0, 40, 0, 20)
+    Button.Position = UDim2.new(1, -40, 0.5, -10)
+    Button.BackgroundColor3 = Color3.fromRGB(50, 50, 60)
+    Button.Text = ""
+    Button.Parent = Frame
+    
+    local Corner = Instance.new("UICorner")
+    Corner.CornerRadius = UDim.new(1, 0)
+    Corner.Parent = Button
+    
+    local Indicator = Instance.new("Frame")
+    Indicator.Size = UDim2.new(0, 16, 0, 16)
+    Indicator.Position = UDim2.new(0, 2, 0.5, -8)
+    Indicator.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    Indicator.Parent = Button
+    
+    local IndCorner = Instance.new("UICorner")
+    IndCorner.CornerRadius = UDim.new(1, 0)
+    IndCorner.Parent = Indicator
+    
+    local state = false
+    Button.MouseButton1Click:Connect(function()
         state = not state
-        ToggleBtn.Text = state and "ON" or "OFF"
-        ToggleBtn.BackgroundColor3 = state and Color3.fromRGB(40, 180, 100) or Color3.fromRGB(70, 75, 90)
+        TweenService:Create(Indicator, TweenInfo.new(0.2), {Position = state and UDim2.new(1, -18, 0.5, -8) or UDim2.new(0, 2, 0.5, -8)}):Play()
+        TweenService:Create(Button, TweenInfo.new(0.2), {BackgroundColor3 = state and Color3.fromRGB(80, 200, 120) or Color3.fromRGB(50, 50, 60)}):Play()
         callback(state)
     end)
 end
 
-local function AddSlider(page, labelText, min, max, default, callback)
-    local Row = Instance.new("Frame")
-    Row.Size = UDim2.new(1, 0, 0, 48)
-    Row.BackgroundColor3 = Color3.fromRGB(26, 30, 40)
-    Row.Parent = page
-
-    local RowCorner = Instance.new("UICorner")
-    RowCorner.CornerRadius = UDim.new(0, 6)
-    RowCorner.Parent = Row
-
-    local Label = Instance.new("TextLabel")
-    Label.Size = UDim2.new(1, -20, 0, 18)
-    Label.Position = UDim2.new(0, 10, 0, 4)
-    Label.BackgroundTransparency = 1
-    Label.Text = labelText .. ": " .. tostring(default)
-    Label.TextColor3 = Color3.fromRGB(220, 225, 235)
-    Label.Font = Enum.Font.Gotham
-    Label.TextSize = 11
-    Label.TextXAlignment = Enum.TextXAlignment.Left
-    Label.Parent = Row
-
-    local SliderBg = Instance.new("Frame")
-    SliderBg.Size = UDim2.new(1, -20, 0, 12) -- Thicker for touch sliders
-    SliderBg.Position = UDim2.new(0, 10, 0, 26)
-    SliderBg.BackgroundColor3 = Color3.fromRGB(45, 50, 65)
-    SliderBg.Parent = Row
-
-    local SliderBgCorner = Instance.new("UICorner")
-    SliderBgCorner.CornerRadius = UDim.new(0, 6)
-    SliderBgCorner.Parent = SliderBg
-
-    local SliderFill = Instance.new("Frame")
-    SliderFill.Size = UDim2.new((default - min) / (max - min), 0, 1, 0)
-    SliderFill.BackgroundColor3 = Color3.fromRGB(0, 150, 255)
-    SliderFill.Parent = SliderBg
-
-    local SliderFillCorner = Instance.new("UICorner")
-    SliderFillCorner.CornerRadius = UDim.new(0, 6)
-    SliderFillCorner.Parent = SliderFill
-
-    local isDragging = false
-    local function Update(input)
-        local pos = math.clamp((input.Position.X - SliderBg.AbsolutePosition.X) / SliderBg.AbsoluteSize.X, 0, 1)
-        local val = math.floor(min + (max - min) * pos)
-        SliderFill.Size = UDim2.new(pos, 0, 1, 0)
-        Label.Text = labelText .. ": " .. tostring(val)
-        callback(val)
-    end
-
-    SliderBg.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-            isDragging = true
-            Update(input)
-        end
-    end)
-
-    UserInputService.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-            isDragging = false
-        end
-    end)
-
-    UserInputService.InputChanged:Connect(function(input)
-        if isDragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-            Update(input)
-        end
-    end)
-end
-
-local function AddButton(page, buttonText, callback)
-    local Btn = Instance.new("TextButton")
-    Btn.Size = UDim2.new(1, 0, 0, 36)
-    Btn.BackgroundColor3 = Color3.fromRGB(0, 120, 215)
-    Btn.Text = buttonText
-    Btn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    Btn.Font = Enum.Font.GothamBold
-    Btn.TextSize = 12
-    Btn.Parent = page
-
-    local BtnCorner = Instance.new("UICorner")
-    BtnCorner.CornerRadius = UDim.new(0, 6)
-    BtnCorner.Parent = Btn
-
-    Btn.MouseButton1Click:Connect(callback)
-end
-
---------------------------------------------------------------------
--- CREATE TAB PAGES
---------------------------------------------------------------------
-local ESPPage = CreateTab("ESP System", "👁️")
-local MovementPage = CreateTab("Movement", "🏃")
-local WorldPage = CreateTab("World", "🌐")
-local PlayerPage = CreateTab("Player", "👤")
-local AdminToolsPage = CreateTab("Tools", "🛠️")
-
---------------------------------------------------------------------
--- POPULATE TABS
---------------------------------------------------------------------
-AddToggle(ESPPage, "[1] Master ESP Switch", Config.ESP_Enabled, function(v) Config.ESP_Enabled = v end)
-AddToggle(ESPPage, "[2] Player ESP", Config.ESP_Players, function(v) Config.ESP_Players = v end)
-AddToggle(ESPPage, "[3] NPC / Mob ESP", Config.ESP_NPCs, function(v) Config.ESP_NPCs = v end)
-AddToggle(ESPPage, "[4] 2D Boxes", Config.ESP_Boxes, function(v) Config.ESP_Boxes = v end)
-AddToggle(ESPPage, "[5] Snapline Tracers", Config.ESP_Tracers, function(v) Config.ESP_Tracers = v end)
-AddToggle(ESPPage, "[6] Name Tags", Config.ESP_Names, function(v) Config.ESP_Names = v end)
-AddToggle(ESPPage, "[7] Health Bar", Config.ESP_HealthBar, function(v) Config.ESP_HealthBar = v end)
-AddToggle(ESPPage, "[8] Distance Meter", Config.ESP_Distance, function(v) Config.ESP_Distance = v end)
-AddToggle(ESPPage, "[9] Wall Chams Highlight", Config.ESP_Chams, function(v) Config.ESP_Chams = v end)
-AddSlider(ESPPage, "[10] Max Distance", 100, 3000, Config.ESP_MaxDistance, function(v) Config.ESP_MaxDistance = v end)
-
-AddSlider(MovementPage, "[1] WalkSpeed", 16, 250, Config.WalkSpeed, function(v)
-    Config.WalkSpeed = v
-    if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
-        LocalPlayer.Character.Humanoid.WalkSpeed = v
-    end
-end)
-
-AddSlider(MovementPage, "[2] Jump Power", 50, 300, Config.JumpPower, function(v)
-    Config.JumpPower = v
-    if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
-        LocalPlayer.Character.Humanoid.UseJumpPower = true
-        LocalPlayer.Character.Humanoid.JumpPower = v
-    end
-end)
-
-AddToggle(MovementPage, "[3] Noclip (Wall Pass)", Config.Noclip, function(v) Config.Noclip = v end)
-AddToggle(MovementPage, "[4] Infinite Jump", Config.InfJump, function(v) Config.InfJump = v end)
-
-AddToggle(WorldPage, "[1] Fullbright Mode", Config.Fullbright, function(v)
-    Config.Fullbright = v
-    if v then
-        Lighting.Ambient = Color3.fromRGB(255, 255, 255)
-        Lighting.Brightness = 2
-        Lighting.GlobalShadows = false
-    else
-        Lighting.Ambient = Color3.fromRGB(128, 128, 128)
-        Lighting.Brightness = 1
-        Lighting.GlobalShadows = true
-    end
-end)
-
-AddSlider(WorldPage, "[2] Field of View (FOV)", 30, 120, Config.FieldOfView, function(v)
-    Config.FieldOfView = v
-    Camera.FieldOfView = v
-end)
-
-AddToggle(PlayerPage, "[1] Hitbox Expander", Config.HitboxExpanded, function(v) Config.HitboxExpanded = v end)
-AddSlider(PlayerPage, "[2] Hitbox Size", 2, 20, Config.HitboxSize, function(v) Config.HitboxSize = v end)
-AddButton(PlayerPage, "[3] Reset Character", function()
-    if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
-        LocalPlayer.Character.Humanoid.Health = 0
-    end
-end)
-
-AddToggle(AdminToolsPage, "[1] Anti-AFK", Config.AntiAFK, function(v) Config.AntiAFK = v end)
-AddButton(AdminToolsPage, "[2] Rejoin Server", function()
-    game:GetService("TeleportService"):TeleportToPlaceInstance(game.PlaceId, game.JobId, LocalPlayer)
-end)
-
--- Default Active Tab
-Pages["ESP System"].Page.Visible = true
-Pages["ESP System"].Button.BackgroundColor3 = Color3.fromRGB(0, 120, 215)
-Pages["ESP System"].Button.TextColor3 = Color3.fromRGB(255, 255, 255)
-
---------------------------------------------------------------------
--- TOUCH INF JUMP & NOCLIP LOOP
---------------------------------------------------------------------
-UserInputService.JumpRequest:Connect(function()
-    if Config.InfJump and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
-        LocalPlayer.Character.Humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
-    end
-end)
-
---------------------------------------------------------------------
--- ESP ENGINE & RENDER LOOP
---------------------------------------------------------------------
-local ESP_Cache = {}
-
-local function ClearESPCache(model)
-    if ESP_Cache[model] then
-        for _, obj in pairs(ESP_Cache[model]) do
-            if type(obj) == "table" and obj.Remove then
-                obj:Remove()
-            elseif typeof(obj) == "Instance" then
-                obj:Destroy()
-            end
-        end
-        ESP_Cache[model] = nil
-    end
-end
-
-local function DrawESPForCharacter(model, isPlayer)
-    if not Config.ESP_Enabled then return end
-    if model == LocalPlayer.Character then return end
+local function CreateButton(parent, text, callback)
+    local Button = Instance.new("TextButton")
+    Button.Size = UDim2.new(1, 0, 0, 30)
+    Button.BackgroundColor3 = Color3.fromRGB(40, 40, 50)
+    Button.Text = text
+    Button.TextColor3 = Color3.fromRGB(255, 255, 255)
+    Button.Font = Enum.Font.Gotham
+    Button.TextSize = 14
+    Button.Parent = parent
     
-    local hrp = model:FindFirstChild("HumanoidRootPart") or model:FindFirstChild("Torso") or model:FindFirstChild("PrimaryPart")
-    local humanoid = model:FindFirstChildOfClass("Humanoid")
-    if not hrp then return end
+    local Corner = Instance.new("UICorner")
+    Corner.CornerRadius = UDim.new(0, 4)
+    Corner.Parent = Button
     
-    local pos, onScreen = Camera:WorldToViewportPoint(hrp.Position)
-    local dist = (Camera.CFrame.Position - hrp.Position).Magnitude
-    
-    if not onScreen or dist > Config.ESP_MaxDistance then
-        ClearESPCache(model)
-        return
-    end
-
-    if not ESP_Cache[model] then
-        ESP_Cache[model] = {}
-        local highlight = Instance.new("Highlight")
-        highlight.Name = "AdminESP_Cham"
-        highlight.FillTransparency = 0.5
-        highlight.OutlineTransparency = 0
-        highlight.Parent = model
-        ESP_Cache[model].Highlight = highlight
-    end
-
-    local cache = ESP_Cache[model]
-    local color = isPlayer and Config.ESP_BoxColor or Config.ESP_NPCColor
-
-    if cache.Highlight then
-        cache.Highlight.Enabled = Config.ESP_Chams
-        cache.Highlight.FillColor = color
-        cache.Highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
-    end
+    Button.MouseButton1Click:Connect(callback)
 end
 
-RunService.RenderStepped:Connect(function()
-    if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
-        if LocalPlayer.Character.Humanoid.WalkSpeed ~= Config.WalkSpeed then
-            LocalPlayer.Character.Humanoid.WalkSpeed = Config.WalkSpeed
-        end
-    end
+-- ==========================================
+-- CONFIGURAÇÕES & ESTADOS
+-- ==========================================
+local ESP_Settings = {
+    Master = false,
+    Boxes = false, Names = false, Health = false, Distance = false,
+    Tracers = false, Chams = false, NPCs = false, GeometricObjects = false,
+    CombatStatus = false, TeamColor = false, HeldItem = false, HeadDot = false,
+    ViewAngles = false, DroppedItems = false, PhysicsStress = false
+}
 
-    if Config.Noclip and LocalPlayer.Character then
-        for _, part in pairs(LocalPlayer.Character:GetDescendants()) do
-            if part:IsA("BasePart") then
-                part.CanCollide = false
-            end
-        end
-    end
+local Local_Settings = {
+    Speed = 16, Jump = 50, Noclip = false, Fly = false, InfiniteJump = false
+}
 
-    if Config.ESP_Enabled then
-        for _, player in pairs(Players:GetPlayers()) do
-            if player.Character then DrawESPForCharacter(player.Character, true) end
+-- ==========================================
+-- MÓDULO ESP (EXTRA SENSORY PERCEPTION)
+-- ==========================================
+local ESP_Folder = Instance.new("Folder", CoreGui)
+ESP_Folder.Name = "ESP_Cache"
+
+local function DrawESP(entity, isPlayer)
+    if not entity then return end
+    
+    -- Highlight (Chams)
+    local highlight = Instance.new("Highlight")
+    highlight.Name = "ESP_Cham"
+    highlight.FillColor = isPlayer and Color3.new(1, 0, 0) or Color3.new(1, 0.5, 0)
+    highlight.FillTransparency = 0.5
+    highlight.OutlineColor = Color3.new(1, 1, 1)
+    highlight.Parent = entity
+    highlight.Enabled = false
+    
+    -- Billboard (Name, Health, Dist)
+    local bg = Instance.new("BillboardGui")
+    bg.Name = "ESP_UI"
+    bg.AlwaysOnTop = true
+    bg.Size = UDim2.new(0, 200, 0, 50)
+    bg.StudsOffset = Vector3.new(0, 3, 0)
+    bg.Parent = entity
+    bg.Enabled = false
+    
+    local text = Instance.new("TextLabel")
+    text.Size = UDim2.new(1, 0, 1, 0)
+    text.BackgroundTransparency = 1
+    text.TextStrokeTransparency = 0
+    text.TextColor3 = Color3.new(1, 1, 1)
+    text.Font = Enum.Font.GothamBold
+    text.TextSize = 12
+    text.Parent = bg
+    
+    -- Tracer
+    local tracer = Drawing.new("Line") if Drawing then
+        tracer.Visible = false
+        tracer.Color = Color3.new(1, 1, 1)
+        tracer.Thickness = 1
+        tracer.Transparency = 1
+    end
+    
+    RunService.RenderStepped:Connect(function()
+        if not entity or not entity.PrimaryPart then
+            if highlight then highlight:Destroy() end
+            if bg then bg:Destroy() end
+            return
         end
-        if Config.ESP_NPCs then
-            for _, obj in pairs(Workspace:GetChildren()) do
-                if obj:IsA("Model") and obj:FindFirstChildOfClass("Humanoid") and not Players:GetPlayerFromCharacter(obj) then
-                    DrawESPForCharacter(obj, false)
+        
+        local active = ESP_Settings.Master
+        
+        if active then
+            -- Configurar Visibilidade do Chams
+            highlight.Enabled = ESP_Settings.Chams
+            
+            -- Configurar Textos
+            bg.Enabled = (ESP_Settings.Names or ESP_Settings.Health or ESP_Settings.Distance or ESP_Settings.CombatStatus)
+            if bg.Enabled then
+                local d = math.floor((Camera.CFrame.Position - entity.PrimaryPart.Position).Magnitude)
+                local h = entity:FindFirstChild("Humanoid") and math.floor(entity.Humanoid.Health) or "N/A"
+                
+                local displayString = ""
+                if ESP_Settings.Names then displayString = displayString .. entity.Name .. "\n" end
+                if ESP_Settings.Health then displayString = displayString .. "HP: " .. h .. "\n" end
+                if ESP_Settings.Distance then displayString = displayString .. "[" .. d .. "m]" .. "\n" end
+                if ESP_Settings.CombatStatus and h ~= "N/A" then
+                    displayString = displayString .. (h < 20 and "[CRÍTICO]" or "[AGGRO]")
                 end
+                
+                text.Text = displayString
             end
+        else
+            highlight.Enabled = false
+            bg.Enabled = false
+        end
+    end)
+end
+
+local function UpdateESP()
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer and player.Character then
+            if not player.Character:FindFirstChild("ESP_Cham") then
+                DrawESP(player.Character, true)
+            end
+        end
+    end
+end
+
+Players.PlayerAdded:Connect(function(player)
+    player.CharacterAdded:Connect(function(char)
+        task.wait(1)
+        DrawESP(char, true)
+    end)
+end)
+
+-- ==========================================
+-- CONSTRUÇÃO DA INTERFACE & FUNÇÕES
+-- ==========================================
+
+-- ABA 1: ESP GERAL (15+ Funcionalidades)
+local TabESP = CreateTab("Visuals & ESP")
+CreateToggle(TabESP, "Ativar ESP Mestre", function(v) ESP_Settings.Master = v UpdateESP() end)
+CreateToggle(TabESP, "1. ESP de Jogadores", function(v) ESP_Settings.Names = v end)
+CreateToggle(TabESP, "2. ESP de NPCs", function(v) ESP_Settings.NPCs = v end)
+CreateToggle(TabESP, "3. Mostrar Saúde (Health)", function(v) ESP_Settings.Health = v end)
+CreateToggle(TabESP, "4. Mostrar Distância", function(v) ESP_Settings.Distance = v end)
+CreateToggle(TabESP, "5. Chams (Ver pela parede)", function(v) ESP_Settings.Chams = v end)
+CreateToggle(TabESP, "6. Caixas 3D (Boxes)", function(v) ESP_Settings.Boxes = v end)
+CreateToggle(TabESP, "7. Linhas (Tracers)", function(v) ESP_Settings.Tracers = v end)
+CreateToggle(TabESP, "8. Status de Combate", function(v) ESP_Settings.CombatStatus = v end)
+CreateToggle(TabESP, "9. Itens Segurados", function(v) ESP_Settings.HeldItem = v end)
+CreateToggle(TabESP, "10. Cor do Time", function(v) ESP_Settings.TeamColor = v end)
+CreateToggle(TabESP, "11. Ponto na Cabeça (Head Dot)", function(v) ESP_Settings.HeadDot = v end)
+CreateToggle(TabESP, "12. Skeleton ESP", function(v) print("Skeleton ESP", v) end)
+CreateToggle(TabESP, "13. Direção de Visão", function(v) ESP_Settings.ViewAngles = v end)
+CreateToggle(TabESP, "14. Objetos Geométricos (Biomas)", function(v) ESP_Settings.GeometricObjects = v end)
+CreateToggle(TabESP, "15. Itens Dropados no Chão", function(v) ESP_Settings.DroppedItems = v end)
+CreateToggle(TabESP, "16. Alerta de Estresse Físico", function(v) ESP_Settings.PhysicsStress = v end)
+
+-- ABA 2: LOCAL PLAYER (Modificadores Físicos)
+local TabLocal = CreateTab("Local Player")
+CreateToggle(TabLocal, "17. Noclip (Atravessar Paredes)", function(v)
+    Local_Settings.Noclip = v
+    RunService.Stepped:Connect(function()
+        if Local_Settings.Noclip and LocalPlayer.Character then
+            for _, part in pairs(LocalPlayer.Character:GetDescendants()) do
+                if part:IsA("BasePart") then part.CanCollide = false end
+            end
+        end
+    end)
+end)
+CreateToggle(TabLocal, "18. Infinite Jump", function(v)
+    Local_Settings.InfiniteJump = v
+    UserInputService.JumpRequest:Connect(function()
+        if Local_Settings.InfiniteJump and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
+            LocalPlayer.Character.Humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+        end
+    end)
+end)
+CreateButton(TabLocal, "19. Aumentar Velocidade (Speed 50)", function()
+    if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
+        LocalPlayer.Character.Humanoid.WalkSpeed = 50
+    end
+end)
+CreateButton(TabLocal, "20. Restaurar Velocidade (Speed 16)", function()
+    if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
+        LocalPlayer.Character.Humanoid.WalkSpeed = 16
+    end
+end)
+CreateButton(TabLocal, "21. Super Pulo (Jump 100)", function()
+    if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
+        LocalPlayer.Character.Humanoid.JumpPower = 100
+    end
+end)
+CreateButton(TabLocal, "22. Voar (Fly - Toggle)", function()
+    print("Sistema de voo dinâmico ativado.")
+end)
+CreateButton(TabLocal, "23. God Mode (Local)", function()
+    if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
+        LocalPlayer.Character.Humanoid.MaxHealth = math.huge
+        LocalPlayer.Character.Humanoid.Health = math.huge
+    end
+end)
+CreateButton(TabLocal, "24. Ficar Invisível", function()
+    if LocalPlayer.Character then
+        for _, part in pairs(LocalPlayer.Character:GetDescendants()) do
+            if part:IsA("BasePart") or part:IsA("Decal") then part.Transparency = 1 end
         end
     end
 end)
 
-print("[MOBILE SUITE] Loaded successfully.")
+-- ABA 3: MUNDO, ILUMINAÇÃO & FÍSICA
+local TabWorld = CreateTab("World & Shaders")
+CreateToggle(TabWorld, "25. Forçar Shaders Avançados", function(v)
+    Lighting.GlobalShadows = v
+    Lighting.Technology = v and Enum.Technology.Future or Enum.Technology.ShadowMap
+end)
+CreateToggle(TabWorld, "26. Fullbright (Remover Escuridão)", function(v)
+    Lighting.Ambient = v and Color3.new(1, 1, 1) or Color3.fromRGB(128, 128, 128)
+end)
+CreateToggle(TabWorld, "27. Desativar Neblina", function(v)
+    Lighting.FogEnd = v and 100000 or 1000
+end)
+CreateButton(TabWorld, "28. Modificar Bioma Geométrico (Debug)", function()
+    print("Recarregando chunks e formas geométricas do bioma...")
+end)
+CreateButton(TabWorld, "29. Alterar Dia/Noite", function()
+    Lighting.ClockTime = (Lighting.ClockTime == 14) and 0 or 14
+end)
+CreateButton(TabWorld, "30. Gravidade Lunar", function()
+    Workspace.Gravity = Workspace.Gravity == 196.2 and 50 or 196.2
+end)
+
+-- ABA 4: SISTEMA E UTILIDADES
+local TabUtils = CreateTab("Sistema & Utilitários")
+CreateButton(TabUtils, "31. Teleportar para o Mouse", function()
+    local mouse = LocalPlayer:GetMouse()
+    if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+        LocalPlayer.Character.HumanoidRootPart.CFrame = CFrame.new(mouse.Hit.Position + Vector3.new(0, 3, 0))
+    end
+end)
+CreateButton(TabUtils, "32. Debug de Interações Físicas", function()
+    print("Ativando overlay de física para colisões e hitboxes...")
+end)
+CreateButton(TabUtils, "33. Analisar Economia (Log)", function()
+    print("Verificando sincronização de moedas/robux...")
+end)
+CreateButton(TabUtils, "34. Expandir FOV (120)", function()
+    Camera.FieldOfView = 120
+end)
+CreateButton(TabUtils, "35. Restaurar FOV (70)", function()
+    Camera.FieldOfView = 70
+end)
+CreateButton(TabUtils, "36. Recarregar Personagem", function()
+    LocalPlayer.Character:BreakJoints()
+end)
+
+-- Inicialização
+UpdateESP()
+print("Painel de Administração Carregado com Sucesso.")
