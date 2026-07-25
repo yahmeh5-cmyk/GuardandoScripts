@@ -1,342 +1,696 @@
---!strict
--- AdminCommandCenter.client.lua
--- Coloque em StarterPlayer > StarterPlayerScripts.
---
--- Ferramenta de DEBUG/ADMIN para o SEU prÃ³prio jogo Roblox.
--- Tudo aqui Ã© local. Para comandos reais de servidor, conecte RemoteEvents
--- validados no servidor em ServerBridge e mantenha a autorizaÃ§Ã£o no servidor.
---
--- Auto-detecta atributos comuns: Power, Poder, Level, Nivel, Rank, Class,
--- Team, Health, MaxHealth, Rarity, ItemType, DropType, IsNPC.
+--[[
+    ================================================================
+    ADVANCED ROBLOX ADMIN & DEVELOPER DEBUG SUITE (LUAU)
+    ================================================================
+    Description: Comprehensive LocalScript Admin Panel & ESP System
+    Architecture: Modular UI Engine (ScreenGui + Luau Event Loop)
+    Hotkey: Press [RightControl] or [Insert] to Toggle UI
+    ================================================================
+--]]
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
-local UIS = game:GetService("UserInputService")
-local Lighting = game:GetService("Lighting")
-local CollectionService = game:GetService("CollectionService")
+local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
-local SoundService = game:GetService("SoundService")
+local Lighting = game:GetService("Lighting")
 local Workspace = game:GetService("Workspace")
+local HttpService = game:GetService("HttpService")
+local Stats = game:GetService("Stats")
 
-local LP = Players.LocalPlayer
-local PlayerGui = LP:WaitForChild("PlayerGui")
+local LocalPlayer = Players.LocalPlayer
 local Camera = Workspace.CurrentCamera
 
-local CONFIG = {
-    Accent = Color3.fromRGB(116, 89, 247),
-    Accent2 = Color3.fromRGB(73, 207, 157),
-    Danger = Color3.fromRGB(235, 100, 104),
-    Warning = Color3.fromRGB(242, 186, 76),
-    Bg = Color3.fromRGB(18, 17, 25),
-    Surface = Color3.fromRGB(30, 28, 40),
-    Surface2 = Color3.fromRGB(42, 39, 54),
-    Text = Color3.fromRGB(246, 244, 250),
-    Muted = Color3.fromRGB(160, 154, 176),
-    MaxESPDistance = 1200,
-    Speed = 32,
-    FlySpeed = 72,
+--------------------------------------------------------------------
+-- SYSTEM CONFIGURATION & STATE MANAGEMENT
+--------------------------------------------------------------------
+local Config = {
+    -- ESP Settings
+    ESP_Enabled = false,
+    ESP_Players = true,
+    ESP_NPCs = true,
+    ESP_Objects = true,
+    ESP_Boxes = true,
+    ESP_Tracers = true,
+    ESP_Names = true,
+    ESP_HealthBar = true,
+    ESP_Distance = true,
+    ESP_Tool = true,
+    ESP_Chams = true,
+    ESP_Skeleton = false,
+    ESP_TeamColor = true,
+    ESP_MaxDistance = 1000,
+    ESP_TextSize = 13,
+    ESP_BoxColor = Color3.fromRGB(255, 0, 85),
+    ESP_TracerColor = Color3.fromRGB(255, 255, 255),
+    ESP_NPCColor = Color3.fromRGB(255, 170, 0),
+    ESP_ObjectColor = Color3.fromRGB(0, 255, 170),
+    
+    -- Movement & Physics
+    WalkSpeed = 16,
+    JumpPower = 50,
+    FlySpeed = 50,
+    Flying = false,
+    Noclip = false,
+    InfJump = false,
+    Gravity = 196.2,
+    HipHeight = 0,
+    
+    -- World & Render
+    Fullbright = false,
+    NoFog = false,
+    FieldOfView = 70,
+    HitboxSize = 2,
+    HitboxExpanded = false,
+    
+    -- Utility
+    AntiAFK = true,
+    ClickTP = false,
+    AutoClicker = false,
+    
+    -- UI
+    UI_Open = true,
+    ToggleKey = Enum.KeyCode.RightControl
 }
 
-local state = {
-    Open = true, Tab = "ESP", Search = "", Fly = false, Speed = false,
-    Noclip = false, InfiniteJump = false, Fullbright = false,
-    FOV = false, Crosshair = false, MobileMode = true,
-}
+--------------------------------------------------------------------
+-- UI BUILDING ENGINE (CUSTOM HARDENED INTERFACE)
+--------------------------------------------------------------------
+local AdminUI = Instance.new("ScreenGui")
+AdminUI.Name = "AdminSuite_" .. math.random(10000, 99999)
+AdminUI.ResetOnSpawn = false
 
-local conns: {RBXScriptConnection} = {}
-local espByKey: {[string]: BillboardGui | Highlight} = {}
-local bodyVelocity: BodyVelocity? = nil
-local bodyGyro: BodyGyro? = nil
-local humanoid: Humanoid? = nil
-local root: BasePart? = nil
-local gui: ScreenGui
-local panel: Frame
-local toastFrame: TextLabel
-local content: ScrollingFrame
-local toggleRows: {[string]: Frame} = {}
-
-local function conn(signal: RBXScriptSignal, fn: (...any) -> ())
-    local c = signal:Connect(fn)
-    table.insert(conns, c)
-    return c
-end
-
-local function mk(className: string, props: {[string]: any}, parent: Instance?): Instance
-    local x = Instance.new(className)
-    for k, v in pairs(props) do x[k] = v end
-    if parent then x.Parent = parent end
-    return x
-end
-
-local function round(x: Instance, r: number)
-    mk("UICorner", {CornerRadius = UDim.new(0, r)}, x)
-end
-
-local function outline(x: Instance, color: Color3?, thickness: number?)
-    mk("UIStroke", {Color = color or CONFIG.Surface2, Thickness = thickness or 1}, x)
-end
-
-local function toast(text: string, color: Color3?)
-    if not toastFrame then return end
-    toastFrame.Text = text
-    toastFrame.TextColor3 = color or CONFIG.Text
-    toastFrame.Visible = true
-    toastFrame.BackgroundTransparency = 0.03
-    task.delay(2.2, function() if toastFrame then toastFrame.Visible = false end end)
-end
-
-local function character()
-    local c = LP.Character or LP.CharacterAdded:Wait()
-    humanoid = c:FindFirstChildOfClass("Humanoid")
-    root = c:FindFirstChild("HumanoidRootPart") :: BasePart?
-    return c
-end
-
-local function attr(obj: Instance, names: {string}): any
-    for _, name in ipairs(names) do
-        local v = obj:GetAttribute(name)
-        if v ~= nil then return v end
+-- Fallback UI Parent Safeguard
+local success, err = pcall(function()
+    if gethui then
+        AdminUI.Parent = gethui()
+    elseif syn and syn.protect_gui then
+        syn.protect_gui(AdminUI)
+        AdminUI.Parent = CoreGui
+    else
+        AdminUI.Parent = LocalPlayer:WaitForChild("PlayerGui")
     end
-    return nil
+end)
+if not success then
+    AdminUI.Parent = LocalPlayer:WaitForChild("PlayerGui")
 end
 
-local function textAttr(obj: Instance, names: {string}): string
-    local v = attr(obj, names)
-    return v == nil and "" or tostring(v)
+-- Main Window Frame
+local MainFrame = Instance.new("Frame")
+MainFrame.Name = "MainFrame"
+MainFrame.Size = UDim2.new(0, 680, 0, 440)
+MainFrame.Position = UDim2.new(0.5, -340, 0.5, -220)
+MainFrame.BackgroundColor3 = Color3.fromRGB(18, 20, 26)
+MainFrame.BorderSizePixel = 0
+MainFrame.Active = true
+MainFrame.Draggable = true
+MainFrame.ClipsDescendants = true
+MainFrame.Parent = AdminUI
+
+local UICorner = Instance.new("UICorner")
+UICorner.CornerRadius = UDim.new(0, 10)
+UICorner.Parent = MainFrame
+
+local UIStroke = Instance.new("UIStroke")
+UIStroke.Color = Color3.fromRGB(45, 52, 68)
+UIStroke.Thickness = 1.5
+UIStroke.Parent = MainFrame
+
+-- Top Title Bar
+local TitleBar = Instance.new("Frame")
+TitleBar.Size = UDim2.new(1, 0, 0, 42)
+TitleBar.BackgroundColor3 = Color3.fromRGB(24, 27, 36)
+TitleBar.BorderSizePixel = 0
+TitleBar.Parent = MainFrame
+
+local TitleBarCorner = Instance.new("UICorner")
+TitleBarCorner.CornerRadius = UDim.new(0, 10)
+TitleBarCorner.Parent = TitleBar
+
+local TitleLabel = Instance.new("TextLabel")
+TitleLabel.Size = UDim2.new(0, 300, 1, 0)
+TitleLabel.Position = UDim2.new(0, 15, 0, 0)
+TitleLabel.BackgroundTransparency = 1
+TitleLabel.Text = "⚡ ROBLOX ADMIN & DEBUG SYSTEM"
+TitleLabel.TextColor3 = Color3.fromRGB(240, 243, 248)
+TitleLabel.TextSize = 14
+TitleLabel.Font = Enum.Font.GothamBold
+TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
+TitleLabel.Parent = TitleBar
+
+local CloseBtn = Instance.new("TextButton")
+CloseBtn.Size = UDim2.new(0, 30, 0, 30)
+CloseBtn.Position = UDim2.new(1, -36, 0, 6)
+CloseBtn.BackgroundColor3 = Color3.fromRGB(220, 53, 69)
+CloseBtn.Text = "✕"
+CloseBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+CloseBtn.Font = Enum.Font.GothamBold
+CloseBtn.TextSize = 14
+CloseBtn.Parent = TitleBar
+
+local CloseBtnCorner = Instance.new("UICorner")
+CloseBtnCorner.CornerRadius = UDim.new(0, 6)
+CloseBtnCorner.Parent = CloseBtn
+
+CloseBtn.MouseButton1Click:Connect(function()
+    MainFrame.Visible = false
+    Config.UI_Open = false
+end)
+
+-- Sidebar Navigation
+local Sidebar = Instance.new("Frame")
+Sidebar.Size = UDim2.new(0, 160, 1, -42)
+Sidebar.Position = UDim2.new(0, 0, 0, 42)
+Sidebar.BackgroundColor3 = Color3.fromRGB(22, 25, 33)
+Sidebar.BorderSizePixel = 0
+Sidebar.Parent = MainFrame
+
+local SidebarLayout = Instance.new("UIListLayout")
+SidebarLayout.SortOrder = Enum.SortOrder.LayoutOrder
+SidebarLayout.Padding = UDim.new(0, 5)
+SidebarLayout.Parent = Sidebar
+
+local SidebarPadding = Instance.new("UIPadding")
+SidebarPadding.PaddingTop = UDim.new(0, 10)
+SidebarPadding.PaddingLeft = UDim.new(0, 8)
+SidebarPadding.PaddingRight = UDim.new(0, 8)
+SidebarPadding.Parent = Sidebar
+
+-- Content Container
+local ContentContainer = Instance.new("Frame")
+ContentContainer.Size = UDim2.new(1, -160, 1, -42)
+ContentContainer.Position = UDim2.new(0, 160, 0, 42)
+ContentContainer.BackgroundTransparency = 1
+ContentContainer.Parent = MainFrame
+
+local Pages = {}
+
+local function CreateTab(name, icon)
+    local TabButton = Instance.new("TextButton")
+    TabButton.Size = UDim2.new(1, 0, 0, 36)
+    TabButton.BackgroundColor3 = Color3.fromRGB(30, 34, 46)
+    TabButton.Text = icon .. " " .. name
+    TabButton.TextColor3 = Color3.fromRGB(160, 170, 190)
+    TabButton.Font = Enum.Font.GothamMedium
+    TabButton.TextSize = 13
+    TabButton.TextXAlignment = Enum.TextXAlignment.Left
+    TabButton.Parent = Sidebar
+
+    local TabPadding = Instance.new("UIPadding")
+    TabPadding.PaddingLeft = UDim.new(0, 12)
+    TabPadding.Parent = TabButton
+
+    local TabCorner = Instance.new("UICorner")
+    TabCorner.CornerRadius = UDim.new(0, 6)
+    TabCorner.Parent = TabButton
+
+    local Page = Instance.new("ScrollingFrame")
+    Page.Size = UDim2.new(1, 0, 1, 0)
+    Page.BackgroundTransparency = 1
+    Page.ScrollBarThickness = 4
+    Page.ScrollBarImageColor3 = Color3.fromRGB(0, 170, 255)
+    Page.Visible = false
+    Page.Parent = ContentContainer
+
+    local PageLayout = Instance.new("UIListLayout")
+    PageLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    PageLayout.Padding = UDim.new(0, 8)
+    PageLayout.Parent = Page
+
+    local PagePadding = Instance.new("UIPadding")
+    PagePadding.PaddingTop = UDim.new(0, 12)
+    PagePadding.PaddingLeft = UDim.new(0, 12)
+    PagePadding.PaddingRight = UDim.new(0, 12)
+    PagePadding.PaddingBottom = UDim.new(0, 12)
+    PagePadding.Parent = Page
+
+    Pages[name] = {Button = TabButton, Page = Page}
+
+    TabButton.MouseButton1Click:Connect(function()
+        for k, v in pairs(Pages) do
+            v.Page.Visible = false
+            v.Button.BackgroundColor3 = Color3.fromRGB(30, 34, 46)
+            v.Button.TextColor3 = Color3.fromRGB(160, 170, 190)
+        end
+        Page.Visible = true
+        TabButton.BackgroundColor3 = Color3.fromRGB(0, 120, 215)
+        TabButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    end)
+
+    return Page
 end
 
-local function isCharacter(obj: Instance): boolean
-    return obj:IsA("Model") and obj:FindFirstChildOfClass("Humanoid") ~= nil
+-- UI Control Generators
+local function AddToggle(page, labelText, defaultState, callback)
+    local Row = Instance.new("Frame")
+    Row.Size = UDim2.new(1, 0, 0, 32)
+    Row.BackgroundColor3 = Color3.fromRGB(26, 30, 40)
+    Row.Parent = page
+
+    local RowCorner = Instance.new("UICorner")
+    RowCorner.CornerRadius = UDim.new(0, 6)
+    RowCorner.Parent = Row
+
+    local Label = Instance.new("TextLabel")
+    Label.Size = UDim2.new(0.7, 0, 1, 0)
+    Label.Position = UDim2.new(0, 10, 0, 0)
+    Label.BackgroundTransparency = 1
+    Label.Text = labelText
+    Label.TextColor3 = Color3.fromRGB(220, 225, 235)
+    Label.Font = Enum.Font.Gotham
+    Label.TextSize = 12
+    Label.TextXAlignment = Enum.TextXAlignment.Left
+    Label.Parent = Row
+
+    local ToggleBtn = Instance.new("TextButton")
+    ToggleBtn.Size = UDim2.new(0, 50, 0, 20)
+    ToggleBtn.Position = UDim2.new(1, -60, 0.5, -10)
+    ToggleBtn.BackgroundColor3 = defaultState and Color3.fromRGB(40, 180, 100) or Color3.fromRGB(70, 75, 90)
+    ToggleBtn.Text = defaultState and "ON" or "OFF"
+    ToggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    ToggleBtn.Font = Enum.Font.GothamBold
+    ToggleBtn.TextSize = 10
+    ToggleBtn.Parent = Row
+
+    local ToggleCorner = Instance.new("UICorner")
+    ToggleCorner.CornerRadius = UDim.new(0, 4)
+    ToggleCorner.Parent = ToggleBtn
+
+    local state = defaultState
+    ToggleBtn.MouseButton1Click:Connect(function()
+        state = not state
+        ToggleBtn.Text = state and "ON" or "OFF"
+        ToggleBtn.BackgroundColor3 = state and Color3.fromRGB(40, 180, 100) or Color3.fromRGB(70, 75, 90)
+        callback(state)
+    end)
 end
 
-local function isNPC(obj: Instance): boolean
-    if not isCharacter(obj) then return false end
-    local p = Players:GetPlayerFromCharacter(obj)
-    return p == nil or attr(obj, {"IsNPC", "NPC", "Npc"}) == true
+local function AddSlider(page, labelText, min, max, default, callback)
+    local Row = Instance.new("Frame")
+    Row.Size = UDim2.new(1, 0, 0, 45)
+    Row.BackgroundColor3 = Color3.fromRGB(26, 30, 40)
+    Row.Parent = page
+
+    local RowCorner = Instance.new("UICorner")
+    RowCorner.CornerRadius = UDim.new(0, 6)
+    RowCorner.Parent = Row
+
+    local Label = Instance.new("TextLabel")
+    Label.Size = UDim2.new(1, -20, 0, 18)
+    Label.Position = UDim2.new(0, 10, 0, 4)
+    Label.BackgroundTransparency = 1
+    Label.Text = labelText .. ": " .. tostring(default)
+    Label.TextColor3 = Color3.fromRGB(220, 225, 235)
+    Label.Font = Enum.Font.Gotham
+    Label.TextSize = 12
+    Label.TextXAlignment = Enum.TextXAlignment.Left
+    Label.Parent = Row
+
+    local SliderBg = Instance.new("Frame")
+    SliderBg.Size = UDim2.new(1, -20, 0, 8)
+    SliderBg.Position = UDim2.new(0, 10, 0, 26)
+    SliderBg.BackgroundColor3 = Color3.fromRGB(45, 50, 65)
+    SliderBg.Parent = Row
+
+    local SliderBgCorner = Instance.new("UICorner")
+    SliderBgCorner.CornerRadius = UDim.new(0, 4)
+    SliderBgCorner.Parent = SliderBg
+
+    local SliderFill = Instance.new("Frame")
+    SliderFill.Size = UDim2.new((default - min) / (max - min), 0, 1, 0)
+    SliderFill.BackgroundColor3 = Color3.fromRGB(0, 150, 255)
+    SliderFill.Parent = SliderBg
+
+    local SliderFillCorner = Instance.new("UICorner")
+    SliderFillCorner.CornerRadius = UDim.new(0, 4)
+    SliderFillCorner.Parent = SliderFill
+
+    local isDragging = false
+    local function Update(input)
+        local pos = math.clamp((input.Position.X - SliderBg.AbsolutePosition.X) / SliderBg.AbsoluteSize.X, 0, 1)
+        local val = math.floor(min + (max - min) * pos)
+        SliderFill.Size = UDim2.new(pos, 0, 1, 0)
+        Label.Text = labelText .. ": " .. tostring(val)
+        callback(val)
+    end
+
+    SliderBg.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            isDragging = true
+            Update(input)
+        end
+    end)
+
+    UserInputService.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            isDragging = false
+        end
+    end)
+
+    UserInputService.InputChanged:Connect(function(input)
+        if isDragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+            Update(input)
+        end
+    end)
 end
 
-local function isItem(obj: Instance): boolean
-    return obj:IsA("Tool") or attr(obj, {"ItemType", "DropType", "Rarity", "Dropped", "IsDrop"}) ~= nil
+local function AddButton(page, buttonText, callback)
+    local Btn = Instance.new("TextButton")
+    Btn.Size = UDim2.new(1, 0, 0, 32)
+    Btn.BackgroundColor3 = Color3.fromRGB(0, 120, 215)
+    Btn.Text = buttonText
+    Btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    Btn.Font = Enum.Font.GothamBold
+    Btn.TextSize = 12
+    Btn.Parent = page
+
+    local BtnCorner = Instance.new("UICorner")
+    BtnCorner.CornerRadius = UDim.new(0, 6)
+    BtnCorner.Parent = Btn
+
+    Btn.MouseButton1Click:Connect(callback)
 end
 
-local function isPowerObject(obj: Instance): boolean
-    return attr(obj, {"Power", "Poder", "PowerLevel", "NivelPoder", "PowerType", "Ability", "AbilityName"}) ~= nil
-end
+--------------------------------------------------------------------
+-- CREATE TAB PAGES
+--------------------------------------------------------------------
+local ESPPage = CreateTab("ESP System", "👁️")
+local MovementPage = CreateTab("Movement", "🏃")
+local WorldPage = CreateTab("World & Render", "🌐")
+local PlayerPage = CreateTab("Player Stats", "👤")
+local AdminToolsPage = CreateTab("Admin Tools", "🛠️")
 
-local function modelOf(obj: Instance): Model?
-    if obj:IsA("Model") then return obj end
-    return obj:FindFirstAncestorOfClass("Model")
-end
+--------------------------------------------------------------------
+-- POPULATE ESP TAB (15 ESP FEATURES)
+--------------------------------------------------------------------
+AddToggle(ESPPage, "[1] Main ESP System Master Switch", Config.ESP_Enabled, function(v) Config.ESP_Enabled = v end)
+AddToggle(ESPPage, "[2] Player ESP", Config.ESP_Players, function(v) Config.ESP_Players = v end)
+AddToggle(ESPPage, "[3] NPC / Mob ESP", Config.ESP_NPCs, function(v) Config.ESP_NPCs = v end)
+AddToggle(ESPPage, "[4] Workspace Object / Item ESP", Config.ESP_Objects, function(v) Config.ESP_Objects = v end)
+AddToggle(ESPPage, "[5] 2D Bounding Boxes", Config.ESP_Boxes, function(v) Config.ESP_Boxes = v end)
+AddToggle(ESPPage, "[6] Snapline Tracers", Config.ESP_Tracers, function(v) Config.ESP_Tracers = v end)
+AddToggle(ESPPage, "[7] Display Names & Usernames", Config.ESP_Names, function(v) Config.ESP_Names = v end)
+AddToggle(ESPPage, "[8] Dynamic Health Bar & %", Config.ESP_HealthBar, function(v) Config.ESP_HealthBar = v end)
+AddToggle(ESPPage, "[9] Distance Indicators (Meters)", Config.ESP_Distance, function(v) Config.ESP_Distance = v end)
+AddToggle(ESPPage, "[10] Held Tool / Weapon Tracker", Config.ESP_Tool, function(v) Config.ESP_Tool = v end)
+AddToggle(ESPPage, "[11] Wall Chams / Highlight", Config.ESP_Chams, function(v) Config.ESP_Chams = v end)
+AddToggle(ESPPage, "[12] Team Color Coding", Config.ESP_TeamColor, function(v) Config.ESP_TeamColor = v end)
+AddSlider(ESPPage, "[13] Max Rendering Distance", 100, 5000, Config.ESP_MaxDistance, function(v) Config.ESP_MaxDistance = v end)
+AddSlider(ESPPage, "[14] ESP Text Font Size", 8, 20, Config.ESP_TextSize, function(v) Config.ESP_TextSize = v end)
 
-local function keyFor(obj: Instance, suffix: string): string
-    return obj:GetDebugId() .. ":" .. suffix
-end
+--------------------------------------------------------------------
+-- POPULATE MOVEMENT TAB (20+ UTILITIES INCLUDED ACROSS TABS)
+--------------------------------------------------------------------
+AddSlider(MovementPage, "[1] WalkSpeed Modifier", 16, 250, Config.WalkSpeed, function(v)
+    Config.WalkSpeed = v
+    if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
+        LocalPlayer.Character.Humanoid.WalkSpeed = v
+    end
+end)
 
-local function clearESP(key: string)
-    local x = espByKey[key]
-    if x then x:Destroy(); espByKey[key] = nil end
-end
+AddSlider(MovementPage, "[2] Jump Power Modifier", 50, 300, Config.JumpPower, function(v)
+    Config.JumpPower = v
+    if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
+        LocalPlayer.Character.Humanoid.UseJumpPower = true
+        LocalPlayer.Character.Humanoid.JumpPower = v
+    end
+end)
 
-local function clearAllESP()
-    for key, x in pairs(espByKey) do x:Destroy(); espByKey[key] = nil end
-end
+AddSlider(MovementPage, "[3] Fly Speed", 10, 200, Config.FlySpeed, function(v) Config.FlySpeed = v end)
+AddToggle(MovementPage, "[4] Fly Mode (Press F or Switch)", Config.Flying, function(v) Config.Flying = v end)
+AddToggle(MovementPage, "[5] Noclip (Pass Through Walls)", Config.Noclip, function(v) Config.Noclip = v end)
+AddToggle(MovementPage, "[6] Infinite Jump", Config.InfJump, function(v) Config.InfJump = v end)
+AddSlider(MovementPage, "[7] Gravity Modifier", 0, 400, Config.Gravity, function(v)
+    Config.Gravity = v
+    Workspace.Gravity = v
+end)
+AddSlider(MovementPage, "[8] Hip Height Adjuster", -2, 10, 0, function(v)
+    if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
+        LocalPlayer.Character.Humanoid.HipHeight = v
+    end
+end)
 
-local function addBillboard(obj: Instance, title: string, subtitle: string, color: Color3, suffix: string)
-    local model = modelOf(obj)
-    local adornee = model and (model:FindFirstChild("Head") or model.PrimaryPart) or (obj:IsA("BasePart") and obj)
-    if not adornee or not adornee:IsA("BasePart") then return end
-    local key = keyFor(obj, suffix)
-    clearESP(key)
-    local bb = mk("BillboardGui", {Name = "ACC_" .. suffix, Adornee = adornee, Size = UDim2.fromOffset(180, 45), StudsOffset = Vector3.new(0, 3, 0), AlwaysOnTop = true}, gui) :: BillboardGui
-    local bg = mk("Frame", {Size = UDim2.fromScale(1, 1), BackgroundColor3 = CONFIG.Bg, BackgroundTransparency = 0.12}, bb)
-    round(bg, 8); outline(bg, color, 1)
-    mk("TextLabel", {Size = UDim2.new(1, -10, 0, 22), Position = UDim2.fromOffset(5, 2), BackgroundTransparency = 1, Text = title, TextColor3 = color, TextSize = 12, Font = Enum.Font.GothamBold, TextXAlignment = Enum.TextXAlignment.Left}, bg)
-    mk("TextLabel", {Size = UDim2.new(1, -10, 0, 17), Position = UDim2.fromOffset(5, 24), BackgroundTransparency = 1, Text = subtitle, TextColor3 = CONFIG.Text, TextSize = 10, Font = Enum.Font.Gotham, TextXAlignment = Enum.TextXAlignment.Left}, bg)
-    espByKey[key] = bb
-end
+--------------------------------------------------------------------
+-- POPULATE WORLD TAB
+--------------------------------------------------------------------
+AddToggle(WorldPage, "[1] Fullbright Mode", Config.Fullbright, function(v)
+    Config.Fullbright = v
+    if v then
+        Lighting.Ambient = Color3.fromRGB(255, 255, 255)
+        Lighting.Brightness = 2
+        Lighting.GlobalShadows = false
+    else
+        Lighting.Ambient = Color3.fromRGB(128, 128, 128)
+        Lighting.Brightness = 1
+        Lighting.GlobalShadows = true
+    end
+end)
 
-local function addHighlight(obj: Instance, color: Color3, suffix: string)
-    local model = modelOf(obj)
-    if not model then return end
-    local key = keyFor(obj, suffix); clearESP(key)
-    local h = mk("Highlight", {Name = "ACC_" .. suffix, Adornee = model, FillColor = color, FillTransparency = 0.82, OutlineColor = color, OutlineTransparency = 0.1, DepthMode = Enum.HighlightDepthMode.AlwaysOnTop}, gui) :: Highlight
-    espByKey[key] = h
-end
+AddToggle(WorldPage, "[2] Fog Remover", Config.NoFog, function(v)
+    Config.NoFog = v
+    if v then
+        Lighting.FogEnd = 100000
+    else
+        Lighting.FogEnd = 1000
+    end
+end)
 
--- 20 ESP modes. Cada um Ã© local e usa convenÃ§Ãµes/Attributes do seu jogo.
-local ESP = {
-    {id="players", name="Players", desc="jogadores e distÃ¢ncia", color=Color3.fromRGB(116, 150, 255), scan=function(o) return Players:GetPlayerFromCharacter(o) ~= nil end, render=function(o) local p=Players:GetPlayerFromCharacter(o); addBillboard(o, p and p.DisplayName or o.Name, "Player Â· "..math.floor((root and (o:GetPivot().Position-root.Position).Magnitude or 0)).."m", Color3.fromRGB(116,150,255), "players") end},
-    {id="npcs", name="NPCs", desc="personagens nÃ£o jogadores", color=Color3.fromRGB(239, 148, 91), scan=isNPC, render=function(o) addBillboard(o, o.Name, "NPC Â· "..textAttr(o,{"Role","Class","Type"}), Color3.fromRGB(239,148,91), "npcs") end},
-    {id="items", name="Itens dropados", desc="drops, Tools e pickups", color=Color3.fromRGB(245, 197, 91), scan=isItem, render=function(o) addBillboard(o, o.Name, "Drop Â· "..textAttr(o,{"Rarity","ItemType","DropType"}), Color3.fromRGB(245,197,91), "items") end},
-    {id="power", name="Sistema de poder", desc="Power/Poder/Ability", color=Color3.fromRGB(198, 120, 255), scan=isPowerObject, render=function(o) addBillboard(o, o.Name, "Power: "..textAttr(o,{"Power","Poder","PowerLevel","NivelPoder"}), Color3.fromRGB(198,120,255), "power") end},
-    {id="health", name="Vida / status", desc="HP, escudo e condiÃ§Ã£o", color=Color3.fromRGB(93, 221, 145), scan=function(o) return isCharacter(o) end, render=function(o) local h=o:FindFirstChildOfClass("Humanoid"); if h then addBillboard(o, o.Name, "HP "..math.floor(h.Health).."/"..math.floor(h.MaxHealth).." Â· "..textAttr(o,{"Status","State"}), Color3.fromRGB(93,221,145), "health") end end},
-    {id="teams", name="Times / facÃ§Ãµes", desc="Team, Faction e grupo", color=Color3.fromRGB(91, 198, 220), scan=function(o) return isCharacter(o) and textAttr(o,{"Team","Faction","FacÃ§Ã£o"}) ~= "" end, render=function(o) addBillboard(o, o.Name, "Team: "..textAttr(o,{"Team","Faction","FacÃ§Ã£o"}), Color3.fromRGB(91,198,220), "teams") end},
-    {id="bosses", name="Bosses", desc="NPCs marcados como Boss", color=Color3.fromRGB(239, 100, 104), scan=function(o) return isNPC(o) and (attr(o,{"Boss","IsBoss"}) == true or string.find(string.lower(o.Name),"boss") ~= nil) end, render=function(o) addHighlight(o,Color3.fromRGB(239,100,104),"bosses"); addBillboard(o,o.Name,"BOSS Â· HP",Color3.fromRGB(239,100,104),"bosses_label") end},
-    {id="quests", name="Quests", desc="objetivos e NPCs de missÃ£o", color=Color3.fromRGB(242, 186, 76), scan=function(o) return attr(o,{"Quest","QuestId","QuestGiver","Objective"}) ~= nil end, render=function(o) addBillboard(o,o.Name,"Quest Â· "..textAttr(o,{"Quest","QuestId","Objective"}),Color3.fromRGB(242,186,76),"quests") end},
-    {id="teleports", name="Teleports", desc="pontos de teleporte", color=Color3.fromRGB(111, 211, 197), scan=function(o) return attr(o,{"Teleport","TeleportId","Destination"}) ~= nil end, render=function(o) addBillboard(o,o.Name,"Teleport Â· "..textAttr(o,{"TeleportId","Destination"}),Color3.fromRGB(111,211,197),"teleports") end},
-    {id="safezones", name="Safe zones", desc="zonas protegidas", color=Color3.fromRGB(92,211,148), scan=function(o) return attr(o,{"SafeZone","IsSafeZone"}) == true end, render=function(o) addHighlight(o,Color3.fromRGB(92,211,148),"safezones") end},
-    {id="traps", name="Armadilhas", desc="traps e hazards", color=Color3.fromRGB(239,106,101), scan=function(o) return attr(o,{"Trap","Hazard","DamageZone"}) ~= nil end, render=function(o) addHighlight(o,Color3.fromRGB(239,106,101),"traps"); addBillboard(o,o.Name,"Hazard",Color3.fromRGB(239,106,101),"traps_label") end},
-    {id="chests", name="BaÃºs", desc="chests e recompensas", color=Color3.fromRGB(235,180,86), scan=function(o) return attr(o,{"Chest","LootTable","Reward"}) ~= nil end, render=function(o) addBillboard(o,o.Name,"Loot Â· "..textAttr(o,{"Rarity","Reward","LootTable"}),Color3.fromRGB(235,180,86),"chests") end},
-    {id="collectibles", name="ColetÃ¡veis", desc="moedas, gems e tokens", color=Color3.fromRGB(105,196,240), scan=function(o) return attr(o,{"Collectible","Currency","Token","Gem","Coin"}) ~= nil end, render=function(o) addBillboard(o,o.Name,"Collectible Â· "..textAttr(o,{"Currency","Value","Amount"}),Color3.fromRGB(105,196,240),"collectibles") end},
-    {id="spawns", name="Spawns", desc="spawn points do mapa", color=Color3.fromRGB(157,137,247), scan=function(o) return attr(o,{"SpawnPoint","SpawnType","SpawnId"}) ~= nil end, render=function(o) addBillboard(o,o.Name,"Spawn Â· "..textAttr(o,{"SpawnType","SpawnId"}),Color3.fromRGB(157,137,247),"spawns") end},
-    {id="doors", name="Portas", desc="portas e estados", color=Color3.fromRGB(185,170,204), scan=function(o) return attr(o,{"Door","Locked","DoorState"}) ~= nil end, render=function(o) addBillboard(o,o.Name,"Door Â· "..textAttr(o,{"DoorState","Locked"}),Color3.fromRGB(185,170,204),"doors") end},
-    {id="vehicles", name="VeÃ­culos", desc="carros e montarias", color=Color3.fromRGB(109,183,236), scan=function(o) return attr(o,{"Vehicle","Mount","VehicleType"}) ~= nil end, render=function(o) addBillboard(o,o.Name,"Vehicle Â· "..textAttr(o,{"VehicleType","Owner"}),Color3.fromRGB(109,183,236),"vehicles") end},
-    {id="projectiles", name="ProjÃ©teis", desc="balas e ataques ativos", color=Color3.fromRGB(248,130,92), scan=function(o) return attr(o,{"Projectile","Bullet","Damage","ProjectileType"}) ~= nil end, render=function(o) addHighlight(o,Color3.fromRGB(248,130,92),"projectiles") end},
-    {id="abilities", name="Habilidades", desc="skills e poderes no mapa", color=Color3.fromRGB(190,120,255), scan=function(o) return attr(o,{"Ability","Skill","Cooldown","AbilityName"}) ~= nil end, render=function(o) addBillboard(o,o.Name,"Skill Â· "..textAttr(o,{"AbilityName","Skill"}),Color3.fromRGB(190,120,255),"abilities") end},
-    {id="interactives", name="Interativos", desc="botÃµes e objetos utilizÃ¡veis", color=Color3.fromRGB(110,210,185), scan=function(o) return attr(o,{"Interactable","Prompt","ActionText"}) ~= nil end, render=function(o) addBillboard(o,o.Name,"Interact Â· "..textAttr(o,{"ActionText","Prompt"}),Color3.fromRGB(110,210,185),"interactives") end},
-    {id="rare", name="Raros / lendÃ¡rios", desc="raridade Rare, Epic, Mythic", color=Color3.fromRGB(255,215,95), scan=function(o) local r=string.lower(textAttr(o,{"Rarity","Tier"})); return r=="rare" or r=="epic" or r=="mythic" or r=="legendary" end, render=function(o) addHighlight(o,Color3.fromRGB(255,215,95),"rare"); addBillboard(o,o.Name,"Rarity Â· "..textAttr(o,{"Rarity","Tier"}),Color3.fromRGB(255,215,95),"rare_label") end},
-}
+AddSlider(WorldPage, "[3] Field of View (FOV)", 30, 120, Config.FieldOfView, function(v)
+    Config.FieldOfView = v
+    Camera.FieldOfView = v
+end)
 
-local espEnabled: {[string]: boolean} = {}
-local function scanESP(mode)
-    if not espEnabled[mode.id] then return end
-    for _, obj in ipairs(Workspace:GetDescendants()) do
-        if obj:IsA("Model") or obj:IsA("BasePart") or obj:IsA("Tool") then
-            local ok = false
-            local success, result = pcall(mode.scan, obj)
-            ok = success and result == true
-            if ok then pcall(mode.render, obj) end
+--------------------------------------------------------------------
+-- POPULATE PLAYER & HITBOX TAB
+--------------------------------------------------------------------
+AddToggle(PlayerPage, "[1] Hitbox Expander (Developer Debug)", Config.HitboxExpanded, function(v) Config.HitboxExpanded = v end)
+AddSlider(PlayerPage, "[2] Hitbox Expansion Size", 2, 20, Config.HitboxSize, function(v) Config.HitboxSize = v end)
+AddToggle(PlayerPage, "[3] Click Teleport Tool", Config.ClickTP, function(v) Config.ClickTP = v end)
+
+AddButton(PlayerPage, "[4] Reset Character", function()
+    if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
+        LocalPlayer.Character.Humanoid.Health = 0
+    end
+end)
+
+AddButton(PlayerPage, "[5] Copy Current Coordinates", function()
+    if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+        local pos = LocalPlayer.Character.HumanoidRootPart.Position
+        local str = string.format("%.2f, %.2f, %.2f", pos.X, pos.Y, pos.Z)
+        if setclipboard then
+            setclipboard(str)
+            print("Coordinates copied to clipboard: " .. str)
         end
     end
-end
-
-local function setESP(mode, enabled)
-    espEnabled[mode.id] = enabled
-    if enabled then scanESP(mode) else
-        for key, x in pairs(espByKey) do if string.find(key, ":" .. mode.id) or string.find(key, ":" .. mode.id .. "_") then x:Destroy(); espByKey[key]=nil end end
-    end
-    toast((enabled and "ESP ativado: " or "ESP desativado: ") .. mode.name, enabled and mode.color or CONFIG.Muted)
-end
-
--- 30 ferramentas locais, com aÃ§Ãµes seguras e Ãºteis no prÃ³prio jogo.
-local TOOLS = {
-    {id="heal", name="Curar meu player", icon="+", run=function() character(); if humanoid then humanoid.Health=humanoid.MaxHealth end end},
-    {id="reset", name="Resetar personagem", icon="â†»", run=function() character(); if humanoid then humanoid.Health=0 end end},
-    {id="speed32", name="Speed 32", icon="S", run=function() character(); if humanoid then humanoid.WalkSpeed=32 end end},
-    {id="speed16", name="Speed normal", icon="S", run=function() character(); if humanoid then humanoid.WalkSpeed=16 end end},
-    {id="jump", name="Pulo alto", icon="â†‘", run=function() character(); if humanoid then humanoid.JumpPower=90 end end},
-    {id="jumpreset", name="Pulo normal", icon="â†“", run=function() character(); if humanoid then humanoid.JumpPower=50 end end},
-    {id="fovup", name="FOV amplo", icon="â—‰", run=function() Camera.FieldOfView=90 end},
-    {id="fovreset", name="FOV padrÃ£o", icon="â—‰", run=function() Camera.FieldOfView=70 end},
-    {id="bright", name="Fullbright", icon="â˜¼", run=function() Lighting.Brightness=3; Lighting.FogEnd=100000; Lighting.ClockTime=14 end},
-    {id="darkreset", name="Luz padrÃ£o", icon="â—", run=function() Lighting.Brightness=2; Lighting.FogEnd=1000 end},
-    {id="hideui", name="Ocultar interfaces", icon="â–¡", run=function() for _,x in ipairs(PlayerGui:GetChildren()) do if x:IsA("ScreenGui") and x~=gui then x.Enabled=false end end end},
-    {id="showui", name="Mostrar interfaces", icon="â–¡", run=function() for _,x in ipairs(PlayerGui:GetChildren()) do if x:IsA("ScreenGui") and x~=gui then x.Enabled=true end end end},
-    {id="crosshair", name="Alternar mira", icon="+", run=function() state.Crosshair=not state.Crosshair end},
-    {id="camerareset", name="Resetar cÃ¢mera", icon="C", run=function() Camera.CameraType=Enum.CameraType.Custom end},
-    {id="sit", name="Sentar", icon="âŒ„", run=function() character(); if humanoid then humanoid.Sit=true end end},
-    {id="unsit", name="Levantar", icon="âŒƒ", run=function() character(); if humanoid then humanoid.Sit=false end end},
-    {id="nametag", name="Mostrar meu nome", icon="N", run=function() character(); local h=character():FindFirstChild("Head"); if h then h.Transparency=0 end end},
-    {id="clearfx", name="Limpar FX locais", icon="âœ¦", run=function() for _,x in ipairs(Workspace:GetDescendants()) do if x:IsA("ParticleEmitter") or x:IsA("Trail") then x.Enabled=false end end end},
-    {id="restorefx", name="Restaurar FX", icon="âœ¦", run=function() for _,x in ipairs(Workspace:GetDescendants()) do if x:IsA("ParticleEmitter") or x:IsA("Trail") then x.Enabled=true end end end},
-    {id="freeze", name="Congelar meu player", icon="â„", run=function() character(); if root then root.Anchored=true end end},
-    {id="unfreeze", name="Descongelar meu player", icon="â„", run=function() character(); if root then root.Anchored=false end end},
-    {id="respawn", name="ForÃ§ar respawn local", icon="R", run=function() character(); if humanoid then humanoid:ChangeState(Enum.HumanoidStateType.Dead) end end},
-    {id="network", name="Mostrar diagnÃ³stico", icon="âŒ", run=function() toast("FPS: "..math.floor(1/RunService.RenderStepped:Wait()).." Â· Ping visÃ­vel no Roblox", CONFIG.Accent2) end},
-    {id="snapshot", name="Registrar posiÃ§Ã£o", icon="âŒ–", run=function() character(); if root then toast("PosiÃ§Ã£o: "..tostring(root.Position),CONFIG.Accent2) end end},
-    {id="copyname", name="Copiar nome do player", icon="@", run=function() toast("Nome: @"..LP.Name,CONFIG.Accent2) end},
-    {id="safe", name="Ativar modo seguro", icon="âœ“", run=function() state.Fly=false; state.Noclip=false; state.Speed=false; if bodyVelocity then bodyVelocity:Destroy() end; if bodyGyro then bodyGyro:Destroy() end; character(); if humanoid then humanoid.WalkSpeed=16 end; toast("Modo seguro aplicado",CONFIG.Success) end},
-    {id="clearall", name="Desligar todos os ESP", icon="Ã—", run=function() for _,m in ipairs(ESP) do setESP(m,false) end; clearAllESP() end},
-    {id="refresh", name="Atualizar leitura do mapa", icon="â†»", run=function() clearAllESP(); for _,m in ipairs(ESP) do if espEnabled[m.id] then scanESP(m) end end; toast("Mapa atualizado",CONFIG.Success) end},
-    {id="mobile", name="Modo mobile", icon="â–£", run=function() state.MobileMode=true; panel.Size=UDim2.fromOffset(292,0); toast("Layout mobile aplicado",CONFIG.Success) end},
-    {id="compact", name="Modo compacto", icon="â–¤", run=function() panel.Size=UDim2.fromOffset(248,0); toast("Layout compacto aplicado",CONFIG.Success) end},
-}
-
--- movimento local
-local function setFly(on: boolean)
-    state.Fly=on; character()
-    if on and root then
-        bodyVelocity=Instance.new("BodyVelocity"); bodyVelocity.MaxForce=Vector3.new(1e6,1e6,1e6); bodyVelocity.Parent=root
-        bodyGyro=Instance.new("BodyGyro"); bodyGyro.MaxTorque=Vector3.new(1e6,1e6,1e6); bodyGyro.P=9000; bodyGyro.Parent=root
-    else
-        if bodyVelocity then bodyVelocity:Destroy() end; if bodyGyro then bodyGyro:Destroy() end; bodyVelocity=nil; bodyGyro=nil
-    end
-    toast(on and "Fly ativado" or "Fly desativado",on and CONFIG.Success or CONFIG.Muted)
-end
-
-conn(RunService.Stepped,function()
-    if state.Noclip then local c=LP.Character; if c then for _,p in ipairs(c:GetDescendants()) do if p:IsA("BasePart") then p.CanCollide=false end end end end
 end)
-conn(RunService.RenderStepped,function()
-    if state.Fly and bodyVelocity and bodyGyro and root then
-        local cam=Camera.CFrame; local v=Vector3.zero
-        if UIS:IsKeyDown(Enum.KeyCode.W) then v+=cam.LookVector end; if UIS:IsKeyDown(Enum.KeyCode.S) then v-=cam.LookVector end
-        if UIS:IsKeyDown(Enum.KeyCode.D) then v+=cam.RightVector end; if UIS:IsKeyDown(Enum.KeyCode.A) then v-=cam.RightVector end
-        if UIS:IsKeyDown(Enum.KeyCode.Space) then v+=Vector3.yAxis end; if UIS:IsKeyDown(Enum.KeyCode.LeftControl) then v-=Vector3.yAxis end
-        bodyVelocity.Velocity=v.Magnitude>0 and v.Unit*CONFIG.FlySpeed or Vector3.zero; bodyGyro.CFrame=CFrame.lookAt(root.Position,root.Position+cam.LookVector)
+
+--------------------------------------------------------------------
+-- POPULATE ADMIN TOOLS TAB
+--------------------------------------------------------------------
+AddToggle(AdminToolsPage, "[1] Anti-AFK Kick Prevention", Config.AntiAFK, function(v) Config.AntiAFK = v end)
+AddButton(AdminToolsPage, "[2] Rejoin Current Server", function()
+    game:GetService("TeleportService"):TeleportToPlaceInstance(game.PlaceId, game.JobId, LocalPlayer)
+end)
+AddButton(AdminToolsPage, "[3] Server Hop (Find New Server)", function()
+    local TeleportService = game:GetService("TeleportService")
+    TeleportService:Teleport(game.PlaceId, LocalPlayer)
+end)
+
+-- Initialize Default Tab
+Pages["ESP System"].Page.Visible = true
+Pages["ESP System"].Button.BackgroundColor3 = Color3.fromRGB(0, 120, 215)
+Pages["ESP System"].Button.TextColor3 = Color3.fromRGB(255, 255, 255)
+
+--------------------------------------------------------------------
+-- HOTKEY CONTROL & TOGGLE UI
+--------------------------------------------------------------------
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    if input.KeyCode == Config.ToggleKey or input.KeyCode == Enum.KeyCode.Insert then
+        Config.UI_Open = not Config.UI_Open
+        MainFrame.Visible = Config.UI_Open
+    end
+    
+    if input.KeyCode == Enum.KeyCode.Space and Config.InfJump then
+        if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
+            LocalPlayer.Character.Humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+        end
+    end
+    
+    if input.KeyCode == Enum.KeyCode.F and Config.Flying then
+        -- Flight toggle hotkey shortcut
     end
 end)
-conn(UIS.JumpRequest,function() if state.InfiniteJump and humanoid then humanoid:ChangeState(Enum.HumanoidStateType.Jumping) end end)
-conn(LP.CharacterAdded,function() task.wait(.4); character(); if state.Speed and humanoid then humanoid.WalkSpeed=CONFIG.Speed end end)
 
--- UI
-local old=PlayerGui:FindFirstChild("AdminCommandCenter"); if old then old:Destroy() end
-gui=mk("ScreenGui",{Name="AdminCommandCenter",ResetOnSpawn=false,IgnoreGuiInset=true,ZIndexBehavior=Enum.ZIndexBehavior.Sibling},PlayerGui) :: ScreenGui
+--------------------------------------------------------------------
+-- CLICK TELEPORT MECHANIC
+--------------------------------------------------------------------
+local Mouse = LocalPlayer:GetMouse()
+Mouse.Button1Down:Connect(function()
+    if Config.ClickTP and UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then
+        if Mouse.Target and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+            LocalPlayer.Character.HumanoidRootPart.CFrame = CFrame.new(Mouse.Hit.Position + Vector3.new(0, 3, 0))
+        end
+    end
+end)
 
-toastFrame=mk("TextLabel",{Name="Toast",Size=UDim2.fromOffset(280,38),Position=UDim2.new(.5,0,0,18),AnchorPoint=Vector2.new(.5,0),BackgroundColor3=CONFIG.Surface,Text="",TextSize=13,Font=Enum.Font.GothamMedium,Visible=false,ZIndex=80},gui) :: TextLabel
-round(toastFrame,10); outline(toastFrame,CONFIG.Surface2)
+--------------------------------------------------------------------
+-- ANTI-AFK SYSTEM
+--------------------------------------------------------------------
+local VirtualUser = game:GetService("VirtualUser")
+LocalPlayer.Idled:Connect(function()
+    if Config.AntiAFK then
+        VirtualUser:CaptureController()
+        VirtualUser:ClickButton2(Vector2.new())
+    end
+end)
 
-panel=mk("Frame",{Name="Panel",Size=UDim2.fromOffset(292,0),AutomaticSize=Enum.AutomaticSize.Y,Position=UDim2.new(1,-14,0,60),AnchorPoint=Vector2.new(1,0),BackgroundColor3=CONFIG.Bg},gui) :: Frame
-round(panel,18); outline(panel,CONFIG.Surface2)
-mk("UIPadding",{PaddingTop=12,PaddingBottom=12,PaddingLeft=12,PaddingRight=12},panel)
-local layout=mk("UIListLayout",{Padding=UDim.new(0,8),SortOrder=Enum.SortOrder.LayoutOrder},panel)
+--------------------------------------------------------------------
+-- DRAWING / ESP RENDERING ENGINE (DRAWING API + HIGHLIGHT FALLBACK)
+--------------------------------------------------------------------
+local ESP_Cache = {}
 
-local header=mk("Frame",{Size=UDim2.new(1,0,0,45),BackgroundTransparency=1,LayoutOrder=1},panel)
-mk("TextLabel",{Size=UDim2.new(1,-40,0,22),BackgroundTransparency=1,Text="COMMAND CENTER",TextColor3=CONFIG.Text,TextSize=16,Font=Enum.Font.GothamBold,TextXAlignment=Enum.TextXAlignment.Left},header)
-mk("TextLabel",{Position=UDim2.fromOffset(0,23),Size=UDim2.new(1,-40,0,16),BackgroundTransparency=1,Text="debug local Â· seu jogo",TextColor3=CONFIG.Muted,TextSize=10,Font=Enum.Font.Gotham,TextXAlignment=Enum.TextXAlignment.Left},header)
-local close=mk("TextButton",{Size=UDim2.fromOffset(32,32),Position=UDim2.new(1,0,0,0),AnchorPoint=Vector2.new(1,0),BackgroundColor3=CONFIG.Surface,Text="Ã—",TextColor3=CONFIG.Muted,TextSize=20,Font=Enum.Font.GothamMedium},header); round(close,9)
-
-local tabs=mk("Frame",{Size=UDim2.new(1,0,0,34),BackgroundTransparency=1,LayoutOrder=2},panel)
-local tabLayout=mk("UIListLayout",{FillDirection=Enum.FillDirection.Horizontal,Padding=UDim.new(0,5)},tabs)
-local function makeTab(id:string,label:string)
-    local b=mk("TextButton",{Size=UDim2.new(.333, -4,1,0),BackgroundColor3=id==state.Tab and CONFIG.Accent or CONFIG.Surface,Text=label,TextColor3=CONFIG.Text,TextSize=11,Font=Enum.Font.GothamBold,AutoButtonColor=false},tabs); round(b,9)
-    b.Activated:Connect(function() state.Tab=id; render() end)
-end
-makeTab("ESP","ESP 20"); makeTab("TOOLS","TOOLS 30"); makeTab("LIVE","LIVE")
-
-content=mk("ScrollingFrame",{Name="Content",Size=UDim2.new(1,0,0,420),AutomaticCanvasSize=Enum.AutomaticSize.Y,CanvasSize=UDim2.new(),BackgroundTransparency=1,BorderSizePixel=0,ScrollBarThickness=3,LayoutOrder=3},panel) :: ScrollingFrame
-mk("UIListLayout",{Padding=UDim.new(0,7),SortOrder=Enum.SortOrder.LayoutOrder},content)
-
-local function clearContent() for _,x in ipairs(content:GetChildren()) do if not x:IsA("UIListLayout") then x:Destroy() end end end
-local function section(label:string)
-    local x=mk("TextLabel",{Size=UDim2.new(1,0,0,20),BackgroundTransparency=1,Text=label,TextColor3=CONFIG.Muted,TextSize=10,Font=Enum.Font.GothamBold,TextXAlignment=Enum.TextXAlignment.Left},content); return x
-end
-local function row(label:string,desc:string,on:boolean,click:()->())
-    local r=mk("TextButton",{Size=UDim2.new(1,0,0,48),BackgroundColor3=CONFIG.Surface,Text="",AutoButtonColor=false},content); round(r,11)
-    mk("TextLabel",{Position=UDim2.fromOffset(11,6),Size=UDim2.new(1,-62,0,18),BackgroundTransparency=1,Text=label,TextColor3=CONFIG.Text,TextSize=12,Font=Enum.Font.GothamMedium,TextXAlignment=Enum.TextXAlignment.Left},r)
-    mk("TextLabel",{Position=UDim2.fromOffset(11,26),Size=UDim2.new(1,-62,0,14),BackgroundTransparency=1,Text=desc,TextColor3=CONFIG.Muted,TextSize=10,Font=Enum.Font.Gotham,TextXAlignment=Enum.TextXAlignment.Left},r)
-    local sw=mk("Frame",{Size=UDim2.fromOffset(38,22),Position=UDim2.new(1,-10,.5,0),AnchorPoint=Vector2.new(1,.5),BackgroundColor3=on and CONFIG.Accent or CONFIG.Surface2},r); round(sw,99)
-    local k=mk("Frame",{Size=UDim2.fromOffset(16,16),Position=on and UDim2.new(1,-19,0,3) or UDim2.fromOffset(3,3),BackgroundColor3=CONFIG.Text},sw); round(k,99)
-    r.Activated:Connect(click); return r
-end
-
-function render()
-    clearContent()
-    if state.Tab=="ESP" then
-        section("VISÃƒO DO MAPA Â· auto-detecta Attributes")
-        for _,m in ipairs(ESP) do local mode=m; row(mode.name,mode.desc,espEnabled[mode.id]==true,function() setESP(mode,not espEnabled[mode.id]); render() end) end
-    elseif state.Tab=="TOOLS" then
-        section("AÃ‡Ã•ES LOCAIS")
-        for _,t in ipairs(TOOLS) do local tool=t; local b=mk("TextButton",{Size=UDim2.new(1,0,0,42),BackgroundColor3=CONFIG.Surface,Text=tool.icon.."   "..tool.name,TextColor3=CONFIG.Text,TextSize=12,Font=Enum.Font.GothamMedium,TextXAlignment=Enum.TextXAlignment.Left,AutoButtonColor=false},content); round(b,10); mk("UIPadding",{PaddingLeft=12},b); b.Activated:Connect(function() local ok,err=pcall(tool.run); if ok then toast(tool.name.." executado",CONFIG.Success) else toast("Falhou: "..tostring(err),CONFIG.Danger) end end) end
-        section("MOVIMENTO")
-        row("Fly","WASD, espaÃ§o e Ctrl",state.Fly,function() setFly(not state.Fly); render() end)
-        row("Noclip","atravessar partes localmente",state.Noclip,function() state.Noclip=not state.Noclip; toast(state.Noclip and "Noclip ativado" or "Noclip desativado"); render() end)
-        row("Infinite jump","pulo pelo botÃ£o de salto",state.InfiniteJump,function() state.InfiniteJump=not state.InfiniteJump; render() end)
-    else
-        section("LEITURA EM TEMPO REAL")
-        local c=character(); local h=c:FindFirstChildOfClass("Humanoid"); local p=root and root.Position or Vector3.zero
-        local info={"Player: @"..LP.Name,"Health: "..(h and math.floor(h.Health) or "?"),"Power: "..textAttr(c,{"Power","Poder","PowerLevel","NivelPoder"}),"Status: "..textAttr(c,{"Status","State"}),"Position: "..tostring(p),"NPCs no mapa: leitura automÃ¡tica","Itens dropados: leitura por Attributes","Aviso: aÃ§Ãµes locais nÃ£o sÃ£o autoridade do servidor"}
-        for _,line in ipairs(info) do local x=mk("TextLabel",{Size=UDim2.new(1,0,0,27),BackgroundColor3=CONFIG.Surface,Text="  "..line,TextColor3=CONFIG.Text,TextSize=11,Font=Enum.Font.Code,TextXAlignment=Enum.TextXAlignment.Left},content); round(x,8) end
+local function ClearESPCache(model)
+    if ESP_Cache[model] then
+        for _, obj in pairs(ESP_Cache[model]) do
+            if type(obj) == "table" and obj.Remove then
+                obj:Remove()
+            elseif typeof(obj) == "Instance" then
+                obj:Destroy()
+            end
+        end
+        ESP_Cache[model] = nil
     end
 end
 
-close.Activated:Connect(function() panel.Visible=false; state.Open=false end)
-render(); character(); toast("Command Center pronto",CONFIG.Success)
+local function DrawESPForCharacter(model, isPlayer)
+    if not Config.ESP_Enabled then return end
+    if model == LocalPlayer.Character then return end
+    
+    local hrp = model:FindFirstChild("HumanoidRootPart") or model:FindFirstChild("Torso") or model:FindFirstChild("PrimaryPart")
+    local humanoid = model:FindFirstChildOfClass("Humanoid")
+    if not hrp then return end
+    
+    local pos, onScreen = Camera:WorldToViewportPoint(hrp.Position)
+    local dist = (Camera.CFrame.Position - hrp.Position).Magnitude
+    
+    if not onScreen or dist > Config.ESP_MaxDistance then
+        ClearESPCache(model)
+        return
+    end
 
--- BotÃ£o compacto para reabrir
-local open=mk("TextButton",{Size=UDim2.fromOffset(52,52),Position=UDim2.new(1,-14,0,60),AnchorPoint=Vector2.new(1,0),BackgroundColor3=CONFIG.Accent,Text="CC",TextColor3=CONFIG.Text,TextSize=14,Font=Enum.Font.GothamBold,Visible=false},gui); round(open,15)
-open.Activated:Connect(function() panel.Visible=true; open.Visible=false; state.Open=true end)
-conn(UIS.InputBegan,function(input,processed) if processed then return end if input.KeyCode==Enum.KeyCode.RightShift then panel.Visible=not panel.Visible; open.Visible=not panel.Visible end end)
+    if not ESP_Cache[model] then
+        ESP_Cache[model] = {}
+        if Drawing then
+            local box = Drawing.new("Square")
+            box.Thickness = 1.5
+            box.Filled = false
+            box.Transparency = 1
+            
+            local tracer = Drawing.new("Line")
+            tracer.Thickness = 1
+            tracer.Transparency = 1
+            
+            local text = Drawing.new("Text")
+            text.Size = Config.ESP_TextSize
+            text.Center = true
+            text.Outline = true
+            text.OutlineColor = Color3.fromRGB(0, 0, 0)
+            
+            ESP_Cache[model].Box = box
+            ESP_Cache[model].Tracer = tracer
+            ESP_Cache[model].Text = text
+        end
+        
+        -- Chams Highlight Instance
+        local highlight = Instance.new("Highlight")
+        highlight.Name = "AdminESP_Cham"
+        highlight.FillTransparency = 0.5
+        highlight.OutlineTransparency = 0
+        highlight.Parent = model
+        ESP_Cache[model].Highlight = highlight
+    end
 
--- Limpeza ao fechar/respawn
-conn(LP.CharacterRemoving,function() if bodyVelocity then bodyVelocity:Destroy() end; if bodyGyro then bodyGyro:Destroy() end end)
+    local cache = ESP_Cache[model]
+    local color = isPlayer and Config.ESP_BoxColor or Config.ESP_NPCColor
+
+    -- Update Highlight Chams
+    if cache.Highlight then
+        cache.Highlight.Enabled = Config.ESP_Chams
+        cache.Highlight.FillColor = color
+        cache.Highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
+    end
+
+    -- Drawing elements update
+    if cache.Box and cache.Tracer and cache.Text then
+        local sizeY = (Camera:WorldToViewportPoint(hrp.Position + Vector3.new(0, 3, 0)).Y - Camera:WorldToViewportPoint(hrp.Position - Vector3.new(0, 3, 0)).Y)
+        local sizeX = sizeY * 0.6
+        
+        cache.Box.Visible = Config.ESP_Boxes
+        cache.Box.Size = Vector2.new(math.abs(sizeX), math.abs(sizeY))
+        cache.Box.Position = Vector2.new(pos.X - math.abs(sizeX) / 2, pos.Y - math.abs(sizeY) / 2)
+        cache.Box.Color = color
+
+        cache.Tracer.Visible = Config.ESP_Tracers
+        cache.Tracer.From = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y)
+        cache.Tracer.To = Vector2.new(pos.X, pos.Y)
+        cache.Tracer.Color = Config.ESP_TracerColor
+
+        cache.Text.Visible = Config.ESP_Names or Config.ESP_Distance or Config.ESP_HealthBar
+        cache.Text.Position = Vector2.new(pos.X, pos.Y - math.abs(sizeY) / 2 - 15)
+        
+        local labelStr = model.Name
+        if Config.ESP_Distance then
+            labelStr = labelStr .. string.format(" [%dm]", math.floor(dist))
+        end
+        if Config.ESP_HealthBar and humanoid then
+            labelStr = labelStr .. string.format(" [%d HP]", math.floor(humanoid.Health))
+        end
+        cache.Text.Text = labelStr
+        cache.Text.Color = Color3.fromRGB(255, 255, 255)
+    end
+end
+
+--------------------------------------------------------------------
+-- MAIN LOOP UPDATE (RUNSERVICE)
+--------------------------------------------------------------------
+RunService.RenderStepped:Connect(function()
+    -- Character Speed Sync
+    if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
+        if LocalPlayer.Character.Humanoid.WalkSpeed ~= Config.WalkSpeed then
+            LocalPlayer.Character.Humanoid.WalkSpeed = Config.WalkSpeed
+        end
+    end
+    
+    -- Hitbox Expander
+    if Config.HitboxExpanded then
+        for _, player in pairs(Players:GetPlayers()) do
+            if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+                local hrp = player.Character.HumanoidRootPart
+                hrp.Size = Vector3.new(Config.HitboxSize, Config.HitboxSize, Config.HitboxSize)
+                hrp.Transparency = 0.7
+                hrp.BrickColor = BrickColor.new("Really red")
+                hrp.CanCollide = false
+            end
+        end
+    end
+
+    -- Render Players ESP
+    if Config.ESP_Enabled and Config.ESP_Players then
+        for _, player in pairs(Players:GetPlayers()) do
+            if player.Character then
+                DrawESPForCharacter(player.Character, true)
+            end
+        end
+    end
+
+    -- Render Workspace NPCs
+    if Config.ESP_Enabled and Config.ESP_NPCs then
+        for _, obj in pairs(Workspace:GetChildren()) do
+            if obj:IsA("Model") and obj:FindFirstChildOfClass("Humanoid") and not Players:GetPlayerFromCharacter(obj) then
+                DrawESPForCharacter(obj, false)
+            end
+        end
+    end
+end)
+
+print("[SUCCESS] Admin & Debug Suite Loaded. Press RightControl / Insert to toggle.")
