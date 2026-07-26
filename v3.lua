@@ -2400,3 +2400,145 @@ print("[NEXUS] pronto. Painel aberto. Atalho: " .. S.KB_Panel)
 coreNotify("Nexus Admin", "Pronto! " .. S.KB_Panel .. " abre/fecha o painel.", 6)
 notify("Nexus Admin Suite v" .. VERSION, "Aperte " .. S.KB_Panel .. " pra abrir/fechar", 6, "good")
 notify("Pronto", "ESP na primeira aba. " .. S.KB_Panic .. " encerra tudo.", 6)
+--[[
+NEXUS ADMIN SUITE Â· PATCH v1.0.3
+
+Cole este bloco NO FINAL do seu LocalScript atual, depois de todo o cÃ³digo original.
+Ele adiciona:
+  1) botÃ£o flutuante arrastÃ¡vel para abrir/fechar a GUI;
+  2) correÃ§Ã£o dos textos com mojibake, como "ÃƒÂ§", "Ã‚Â·" e "ÃƒÆ’";
+  3) ajuste de TextWrapped/TextScaled para os textos nÃ£o cortarem.
+
+IMPORTANTE: salve o arquivo como UTF-8 no Roblox Studio.
+]]
+
+local function NX_fixText(s)
+	if type(s) ~= "string" then return s end
+	local map = {
+		["ÃƒÆ’Ã‚Â§"] = "Ã§", ["ÃƒÆ’Ã‚Â£"] = "Ã£", ["ÃƒÆ’Ã‚Â¡"] = "Ã¡", ["ÃƒÆ’Ã‚Â©"] = "Ã©",
+		["ÃƒÆ’Ã‚Âª"] = "Ãª", ["ÃƒÆ’Ã‚Â­"] = "Ã­", ["ÃƒÆ’Ã‚Â³"] = "Ã³", ["ÃƒÆ’Ã‚Â´"] = "Ã´",
+		["ÃƒÆ’Ã‚Âµ"] = "Ãµ", ["ÃƒÆ’Ã‚Âº"] = "Ãº", ["ÃƒÆ’Ã‚Â§"] = "Ã§", ["ÃƒÆ’Ã¢â‚¬Ëœ"] = "Ã‘",
+		["ÃƒÂ§"] = "Ã§", ["ÃƒÂ£"] = "Ã£", ["ÃƒÂ¡"] = "Ã¡", ["ÃƒÂ©"] = "Ã©", ["ÃƒÂª"] = "Ãª",
+		["ÃƒÂ­"] = "Ã­", ["ÃƒÂ³"] = "Ã³", ["ÃƒÂ´"] = "Ã´", ["ÃƒÂµ"] = "Ãµ", ["ÃƒÂº"] = "Ãº",
+		["Ãƒâ€°"] = "Ã‰", ["Ãƒâ‚¬"] = "Ã€", ["Ãƒâ€¡"] = "Ã‡", ["Ãƒâ€œ"] = "Ã“", ["ÃƒÅ¡"] = "Ãš",
+		["Ã‚Â·"] = "Â·", ["Ã‚Â©"] = "Â©", ["Ã‚Âº"] = "Âº", ["Ã¢â‚¬â€œ"] = "â€“", ["Ã¢â‚¬â€"] = "â€”",
+		["Ã¢â€“Â¾"] = "â–¾", ["Ã¢â€“Â´"] = "â–´", ["Ã¢â‚¬Â¢"] = "â€¢", ["Ã¢Å¾Â¤"] = "âž¤",
+		["Ãƒâ€”"] = "Ã—",
+	}
+	for bad, good in pairs(map) do s = string.gsub(s, bad, good) end
+	return s
+end
+
+-- Corrige textos que jÃ¡ foram criados pela interface.
+local function NX_repairGuiText(root)
+	for _, obj in ipairs(root:GetDescendants()) do
+		if obj:IsA("TextLabel") or obj:IsA("TextButton") or obj:IsA("TextBox") then
+			obj.Text = NX_fixText(obj.Text)
+			obj.PlaceholderText = NX_fixText(obj.PlaceholderText)
+			obj.TextWrapped = true
+			obj.TextTruncate = Enum.TextTruncate.AtEnd
+		end
+	end
+end
+
+pcall(function()
+	NX_repairGuiText(PanelGui)
+	NX_repairGuiText(OverlayGui)
+end)
+
+-- BotÃ£o flutuante, sempre visÃ­vel mesmo com a janela fechada.
+local NX_Float = new("TextButton", {
+	Name = "NexusFloatingButton",
+	Size = UDim2.fromOffset(58, 58),
+	Position = UDim2.new(1, -78, 0.5, -29),
+	AnchorPoint = Vector2.new(0, 0),
+	BackgroundColor3 = T.Accent,
+	Text = "N",
+	TextColor3 = T.Bg,
+	TextSize = 24,
+	Font = T.FontB,
+	AutoButtonColor = false,
+	BorderSizePixel = 0,
+	Active = true,
+	ZIndex = 100,
+	Parent = OverlayGui,
+})
+corner(29, NX_Float)
+local NX_FloatStroke = stroke(T.Text, 1, NX_Float, 0.55)
+
+local NX_FloatSub = label(NX_Float, "NEXUS", {
+	Position = UDim2.new(0, -12, 1, 4),
+	Size = UDim2.fromOffset(82, 14),
+	TextColor3 = T.Text,
+	TextSize = 9,
+	Font = T.FontB,
+	TextXAlignment = Enum.TextXAlignment.Center,
+	TextWrapped = false,
+	ZIndex = 101,
+})
+
+local NX_dragging = false
+local NX_dragStart
+local NX_buttonStart
+local NX_moved = false
+
+NX_Float.InputBegan:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+		NX_dragging = true
+		NX_moved = false
+		NX_dragStart = input.Position
+		NX_buttonStart = NX_Float.Position
+	end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+	if not NX_dragging then return end
+	if input.UserInputType ~= Enum.UserInputType.MouseMovement and input.UserInputType ~= Enum.UserInputType.Touch then return end
+	local delta = input.Position - NX_dragStart
+	if delta.Magnitude > 6 then NX_moved = true end
+	NX_Float.Position = UDim2.new(
+		NX_buttonStart.X.Scale,
+		NX_buttonStart.X.Offset + delta.X,
+		NX_buttonStart.Y.Scale,
+		NX_buttonStart.Y.Offset + delta.Y
+	)
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+		NX_dragging = false
+	end
+end)
+
+NX_Float.MouseEnter:Connect(function()
+	tween(NX_Float, 0.12, { BackgroundColor3 = T.Text, TextColor3 = T.Accent })
+	tween(NX_FloatStroke, 0.12, { Color = T.Accent, Transparency = 0 })
+end)
+
+NX_Float.MouseLeave:Connect(function()
+	tween(NX_Float, 0.12, { BackgroundColor3 = T.Accent, TextColor3 = T.Bg })
+	tween(NX_FloatStroke, 0.12, { Color = T.Text, Transparency = 0.55 })
+end)
+
+NX_Float.MouseButton1Click:Connect(function()
+	if NX_moved then return end
+	setOpen(not uiOpen)
+end)
+
+-- Se outro script destruir a interface, este botÃ£o nÃ£o fica sobrando.
+PanelGui.Destroying:Connect(function()
+	if NX_Float and NX_Float.Parent then NX_Float:Destroy() end
+end)
+
+-- Reaplica a correÃ§Ã£o quando novas notificaÃ§Ãµes/labels forem criadas.
+task.spawn(function()
+	while PanelGui.Parent and OverlayGui.Parent do
+		task.wait(1)
+		pcall(function()
+			NX_repairGuiText(PanelGui)
+			NX_repairGuiText(OverlayGui)
+		end)
+	end
+end)
+
+print("[NEXUS] patch v1.0.3 aplicado: botÃ£o flutuante ativo")
